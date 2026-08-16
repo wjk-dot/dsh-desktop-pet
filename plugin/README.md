@@ -45,8 +45,21 @@ DeepSeek Harness（DSH）的桌面伴侣：一只以 DeepSeek 图标为形象的
 
 ```sh
 cd ~/.dsh/profiles/web
-pnpm add "file:/path/to/dsh-desktop-pet/plugin"
+# 注意：用 link:（符号链接）而不是 file:（拷贝）——开发迭代时改动即时生效；
+# pnpm 的 file: 会拷贝一份旧副本，宿主加载的是副本，改代码不生效。
+pnpm add "link:/path/to/dsh-desktop-pet/plugin"
 # 编辑 cordis.patch.yml 追加上面两行
+```
+
+插件运行时会 import `@deepseek-ai/dsh-llm`（peer 依赖）。`link:` 安装后模块的真实路径在
+插件源码目录，需让 Node 能解析到 DSH 的包（二选一）：
+
+```sh
+# 方式 A：把宿主 node_modules 的 @deepseek-ai 链到插件目录（推荐，开发机）
+ln -sfn "/Applications/DeepSeek Harness.app/Contents/Resources/host/node_modules/@deepseek-ai" \
+  /path/to/dsh-desktop-pet/plugin/node_modules/@deepseek-ai
+
+# 方式 B：把 @deepseek-ai 声明为 devDependencies 并 pnpm install（发布机）
 ```
 
 重启 DeepSeek Harness 后验证：
