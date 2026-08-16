@@ -77,6 +77,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in
                 self?.window?.webView.captureSnapshot(to: path)
             }
+            // 第二拍：短内容快照（验证宽度自适应收缩）
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in
+                self?.window?.webView.eval("window.petBridge && window.petBridge.debugLongBubble('嗨！我是小鲸鱼，点我聊天～')")
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3.8) { [weak self] in
+                self?.window?.webView.captureSnapshot(to: path + "-short.png")
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 4.5) {
+                exit(0)
+            }
         }
     }
 

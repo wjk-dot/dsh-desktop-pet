@@ -70,21 +70,19 @@ final class PetWebView: WKWebView, WKScriptMessageHandler, WKNavigationDelegate 
         takeSnapshot(with: config) { [weak self] image, error in
             guard let image, error == nil else {
                 NSLog("pet: snapshot failed: %@", error?.localizedDescription ?? "unknown")
-                exit(1)
+                return
             }
             guard let tiff = image.tiffRepresentation,
                   let rep = NSBitmapImageRep(data: tiff),
                   let png = rep.representation(using: .png, properties: [:]) else {
                 NSLog("pet: snapshot encode failed")
-                exit(1)
+                return
             }
             do {
                 try png.write(to: URL(fileURLWithPath: path))
                 NSLog("pet: snapshot saved to %@", path)
-                exit(0)
             } catch {
                 NSLog("pet: snapshot write failed: %@", error.localizedDescription)
-                exit(1)
             }
         }
     }

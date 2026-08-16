@@ -158,6 +158,36 @@
   let caretVisible = false
   let renderPending = false
 
+  /** 气泡宽度上限/下限（与 pet.css 保持一致）。 */
+  const BUBBLE_MAX_W = 344
+  const BUBBLE_MIN_W = 120
+
+  /**
+   * 按内容自动适配气泡宽度：
+   * - 短内容（单行即可放下）→ 收缩到内容自然宽度（≥ min）
+   * - 长内容（需要换行/含代码表格）→ 展开到 max-width
+   * 用隐藏探针量内容在 nowrap 下的自然宽度来判定。
+   */
+  function fitBubbleWidth() {
+    if (bubble.hidden) return
+    const probe = document.createElement('div')
+    probe.style.cssText =
+      'position:absolute;visibility:hidden;pointer-events:none;' +
+      'white-space:nowrap;left:-9999px;top:0;font-size:14px;' +
+      'line-height:1.7;font-family:inherit;max-width:' + BUBBLE_MAX_W + 'px;' +
+      'overflow:hidden;'
+    probe.innerHTML = bubbleText.innerHTML
+    document.body.appendChild(probe)
+    const natural = probe.scrollWidth + 36 // + 左右 padding 18*2
+    document.body.removeChild(probe)
+    const w = natural <= BUBBLE_MAX_W
+      ? Math.max(BUBBLE_MIN_W, natural)
+      : BUBBLE_MAX_W
+    if (Math.abs((bubble.offsetWidth || 0) - w) > 2) {
+      bubble.style.width = w + 'px'
+    }
+  }
+
   /** 重渲染气泡（rAF 合并高频增量，限高后滚到底部）。 */
   function renderBubble(withCaret) {
     caretVisible = withCaret
@@ -166,6 +196,7 @@
     requestAnimationFrame(function () {
       renderPending = false
       bubbleText.innerHTML = renderRich(raw) + (caretVisible ? caretHtml : '')
+      fitBubbleWidth()
       bubble.scrollTop = bubble.scrollHeight
     })
   }

@@ -31,13 +31,14 @@ html, body {
 .bubble {
   position: absolute;
   /* 锚定在桌宠头顶上方：pet 顶边离底部 240px，气泡底边 256px（留 16px 空隙）。
-     底边固定 → 文本变长时气泡向上生长，永不向下盖住桌宠。
-     固定宽度 → 流式期间排版不跳动。 */
+     底边固定 → 高度随内容向上生长，永不向下盖住桌宠。
+     宽度由 JS 按内容测量（fitBubbleWidth）：单行短内容收缩、长内容展开到 344px。 */
   bottom: 256px;
   top: auto;
   left: 50%;
   transform: translateX(-50%);
-  width: 344px;
+  width: 160px;
+  max-width: 344px;
   max-height: 292px;
   overflow-y: auto;
   z-index: 2;
@@ -45,6 +46,7 @@ html, body {
   border-radius: 20px;
   padding: 14px 18px;
   box-shadow: 0 4px 18px rgba(20, 60, 120, 0.18);
+  transition: width 0.15s ease;
   animation: bubbleIn 0.25s cubic-bezier(0.2, 0.9, 0.3, 1.2);
 }
 
