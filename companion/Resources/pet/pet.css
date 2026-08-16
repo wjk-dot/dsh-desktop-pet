@@ -50,18 +50,42 @@ html, body {
   animation: bubbleIn 0.25s cubic-bezier(0.2, 0.9, 0.3, 1.2);
 }
 
-.bubble-text {
+/* ---------- 会话记录面板（气泡内） ---------- */
+.transcript {
+  overflow-y: auto;
+  max-height: 240px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  /* ✕ 按钮占位，正文顶部留出空间 */
+  padding-top: 26px;
+}
+
+/* 用户消息：右侧蓝色块 */
+.msg-user {
+  align-self: flex-end;
+  max-width: 80%;
+  background: linear-gradient(135deg, #4d6bfe, #4dacff);
+  color: #fff;
+  border-radius: 14px 14px 4px 14px;
+  padding: 7px 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+/* 助手回复：左侧富文本 */
+.msg-assistant {
+  align-self: flex-start;
+  max-width: 100%;
   font-size: 14px;
   line-height: 1.7;
   color: #1a2b4d;
   word-break: break-word;
-  white-space: pre-wrap;
-  overflow-y: auto;
-  /* 滚动上限：气泡 max-height 292 - 上下 padding 28 - 头部 ✕ 预留 ~24 */
-  max-height: 240px;
 }
 
-.bubble-text .caret {
+.transcript .caret {
   display: inline-block;
   width: 2px;
   height: 13px;
@@ -72,18 +96,18 @@ html, body {
 }
 
 /* ---------- 富文本内容（Markdown/KaTeX/highlight.js 渲染结果） ---------- */
-.bubble-text p { margin: 3px 0; }
-.bubble-text ul, .bubble-text ol { margin: 4px 0; padding-left: 18px; }
-.bubble-text h1, .bubble-text h2, .bubble-text h3,
-.bubble-text h4, .bubble-text h5, .bubble-text h6 {
+.msg-assistant p { margin: 3px 0; }
+.msg-assistant ul, .msg-assistant ol { margin: 4px 0; padding-left: 18px; }
+.msg-assistant h1, .msg-assistant h2, .msg-assistant h3,
+.msg-assistant h4, .msg-assistant h5, .msg-assistant h6 {
   font-size: 13px;
   font-weight: 600;
   margin: 6px 0 2px;
   color: #12244a;
 }
-.bubble-text a { color: #4d6bfe; text-decoration: none; }
-.bubble-text strong { color: #12244a; }
-.bubble-text blockquote {
+.msg-assistant a { color: #4d6bfe; text-decoration: none; }
+.msg-assistant strong { color: #12244a; }
+.msg-assistant blockquote {
   border-left: 3px solid #c9d6f0;
   margin: 6px 0;
   padding: 2px 8px;
@@ -91,26 +115,26 @@ html, body {
   background: rgba(77, 107, 254, 0.04);
   border-radius: 0 6px 6px 0;
 }
-.bubble-text table { border-collapse: collapse; margin: 6px 0; font-size: 11px; width: 100%; }
-.bubble-text th, .bubble-text td {
+.msg-assistant table { border-collapse: collapse; margin: 6px 0; font-size: 11px; width: 100%; }
+.msg-assistant th, .msg-assistant td {
   border: 1px solid #d8e0ee;
   padding: 3px 6px;
   text-align: left;
 }
-.bubble-text th { background: rgba(77, 107, 254, 0.06); }
-.bubble-text img { max-width: 100%; border-radius: 6px; }
-.bubble-text hr { border: none; border-top: 1px solid #d8e0ee; margin: 6px 0; }
-.bubble-text code {
+.msg-assistant th { background: rgba(77, 107, 254, 0.06); }
+.msg-assistant img { max-width: 100%; border-radius: 6px; }
+.msg-assistant hr { border: none; border-top: 1px solid #d8e0ee; margin: 6px 0; }
+.msg-assistant code {
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   font-size: 12px;
 }
-.bubble-text :not(pre) > code {
+.msg-assistant :not(pre) > code {
   background: rgba(77, 107, 254, 0.09);
   color: #3551c9;
   border-radius: 4px;
   padding: 1px 4px;
 }
-.bubble-text pre {
+.msg-assistant pre {
   background: #1f2937;
   color: #e5e7eb;
   border-radius: 8px;
@@ -120,19 +144,19 @@ html, body {
   overflow-x: auto;
   margin: 6px 0;
 }
-.bubble-text pre code {
+.msg-assistant pre code {
   background: transparent;
   color: inherit;
   padding: 0;
 }
-.bubble-text .hljs-comment, .bubble-text .hljs-quote { color: #9ca3af; font-style: italic; }
-.bubble-text .hljs-keyword, .bubble-text .hljs-selector-tag, .bubble-text .hljs-literal { color: #93c5fd; }
-.bubble-text .hljs-string, .bubble-text .hljs-attr, .bubble-text .hljs-regexp { color: #a5d6a7; }
-.bubble-text .hljs-number, .bubble-text .hljs-symbol, .bubble-text .hljs-bullet { color: #fbc02d; }
-.bubble-text .hljs-title, .bubble-text .hljs-function, .bubble-text .hljs-section { color: #f8b4c8; }
-.bubble-text .hljs-built_in, .bubble-text .hljs-type { color: #c4b5fd; }
-.bubble-text .katex-display { margin: 6px 0; overflow-x: auto; overflow-y: hidden; padding: 2px 0; }
-.bubble-text .katex { font-size: 1.1em; }
+.msg-assistant .hljs-comment, .msg-assistant .hljs-quote { color: #9ca3af; font-style: italic; }
+.msg-assistant .hljs-keyword, .msg-assistant .hljs-selector-tag, .msg-assistant .hljs-literal { color: #93c5fd; }
+.msg-assistant .hljs-string, .msg-assistant .hljs-attr, .msg-assistant .hljs-regexp { color: #a5d6a7; }
+.msg-assistant .hljs-number, .msg-assistant .hljs-symbol, .msg-assistant .hljs-bullet { color: #fbc02d; }
+.msg-assistant .hljs-title, .msg-assistant .hljs-function, .msg-assistant .hljs-section { color: #f8b4c8; }
+.msg-assistant .hljs-built_in, .msg-assistant .hljs-type { color: #c4b5fd; }
+.msg-assistant .katex-display { margin: 6px 0; overflow-x: auto; overflow-y: hidden; padding: 2px 0; }
+.msg-assistant .katex { font-size: 1.1em; }
 
 /* 气泡右上角关闭按钮 */
 .bubble-close {

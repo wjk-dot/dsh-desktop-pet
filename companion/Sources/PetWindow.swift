@@ -45,12 +45,8 @@ final class PetWindow: NSWindow {
             : "window.petBridge && window.petBridge.renderOffline()")
     }
 
-    func greet() {
-        webView.eval("window.petBridge && window.petBridge.greet()")
-    }
-
     func notifyMemoryCleared() {
-        webView.eval("window.petBridge && window.petBridge.setState('idle')")
+        webView.eval("window.petBridge && window.petBridge.clearTranscript()")
     }
 
     // MARK: - 拖动（JS 判定拖动手势后调用）

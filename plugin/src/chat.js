@@ -114,6 +114,11 @@ export class PetChatService {
     this.memory.clear()
   }
 
+  /** 当前会话记录（供 /api/pet/history 读取，伴生应用启动时载入显示）。 */
+  historyView() {
+    return this.memory.history().map((m) => ({ role: m.role, content: m.content }))
+  }
+
   /** 当前配置视图（供 /api/pet/config 读取）。 */
   configView() {
     const selection = this.ctx.agentDefaultModel.currentSelection()

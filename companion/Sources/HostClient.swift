@@ -126,6 +126,27 @@ final class HostClient: NSObject, URLSessionDataDelegate {
         URLSession.shared.dataTask(with: req).resume()
     }
 
+    /// 拉取 host 端会话记录，推给页面显示（启动/恢复在线时调用）。
+    func fetchHistory() {
+        reloadBridge()
+        guard let base = baseURL else { return }
+        var req = URLRequest(url: base.appendingPathComponent("/api/pet/history"))
+        req.timeoutInterval = 5
+        URLSession.shared.dataTask(with: req) { [weak self] data, _, _ in
+            guard let data,
+                  let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let turns = obj["turns"] as? [[String: Any]] else { return }
+            let trimmed: [[String: Any]] = turns.map { t in
+                ["role": t["role"] ?? "assistant", "content": t["content"] ?? ""]
+            }
+            guard let json = try? JSONSerialization.data(withJSONObject: trimmed),
+                  let script = String(data: json, encoding: .utf8) else { return }
+            DispatchQueue.main.async {
+                self?.evalJS("window.petBridge && window.petBridge.loadHistory(\(script))")
+            }
+        }.resume()
+    }
+
     private func evalJS(_ script: String) {
         onEval?(script)
     }

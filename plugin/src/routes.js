@@ -45,6 +45,18 @@ export function makePetRoutes({ service, writeBridge }) {
     },
     {
       kind: 'exact',
+      path: '/api/pet/history',
+      handler: (req, res) => {
+        if (!requireMethod(req, res, 'GET')) return
+        try {
+          json(res, 200, { ok: true, turns: service.historyView() })
+        } catch (error) {
+          json(res, 500, { ok: false, error: error instanceof Error ? error.message : String(error) })
+        }
+      },
+    },
+    {
+      kind: 'exact',
       path: '/api/pet/memory',
       handler: (req, res) => {
         if (!requireMethod(req, res, 'POST')) return

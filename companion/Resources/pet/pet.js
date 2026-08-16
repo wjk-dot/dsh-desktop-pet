@@ -1,9 +1,12 @@
-/* DeepSeek 桌宠页面逻辑：状态机 + 气泡打字机 + 输入框 + 拖动判定。
+/* DeepSeek 桌宠页面逻辑：状态机 + 会话记录面板 + 输入框 + 拖动判定。
  * 与原生壳的契约：
  *   JS → Swift: window.webkit.messageHandlers.pet.postMessage({type, ...})
  *     - {type:'chat', text}   发送一条对话
  *     - {type:'drag'}         进入拖动模式（原生壳接管窗口移动）
  *   Swift → JS: window.petBridge.* 注入方法（由原生壳 evaluateJavaScript 调用）
+ *     - loadHistory(turns)    启动时载入 host 端持久化的会话记录
+ *     - clearTranscript()     清空会话记录（托盘清记忆时调用）
+ *     - renderDelta / renderDone / renderError / renderOffline / renderOnline
  */
 
 (function () {
@@ -11,7 +14,7 @@
 
   const stage = document.getElementById('stage')
   const bubble = document.getElementById('bubble')
-  const bubbleText = document.getElementById('bubbleText')
+  const transcript = document.getElementById('transcript')
   const bubbleClose = document.getElementById('bubbleClose')
   const inputBar = document.getElementById('inputBar')
   const inputText = document.getElementById('inputText')
@@ -20,8 +23,6 @@
 
   let state = 'idle'        // idle | listening | thinking | speaking | offline
   let streaming = false     // 正在等待/接收回复
-  let greetingShown = false
-  let autoHideTimer = null  // 对话完成后自动收起气泡的定时器
 
   /* ---------- 状态 ---------- */
   function setState(next) {
@@ -153,12 +154,12 @@
     return { text: restoreCodeBlocks(t, p.blocks), parts: parts }
   }
 
-  /* ---------- 气泡打字机 ---------- */
+  /* ---------- 会话记录（气泡内联面板） ---------- */
 
-  let raw = ''              // 当前气泡的原始文本（Markdown 源）
+  /** 会话记录：与 host 端记忆保持一致（显示用）。 */
+  let conversation = [] // [{role:'user'|'assistant', raw:string}]
+  let lastEntryIndex = -1 // 当前流式回复在 conversation 中的下标
   const caretHtml = '<span class="caret"></span>'
-  let caretVisible = false
-  let renderPending = false
 
   /** 气泡宽度上限/下限（与 pet.css 保持一致）。 */
   const BUBBLE_MAX_W = 344
@@ -178,7 +179,7 @@
       'white-space:nowrap;left:-9999px;top:0;font-size:14px;' +
       'line-height:1.7;font-family:inherit;max-width:' + BUBBLE_MAX_W + 'px;' +
       'overflow:hidden;'
-    probe.innerHTML = bubbleText.innerHTML
+    probe.innerHTML = transcript.innerHTML
     document.body.appendChild(probe)
     const natural = probe.scrollWidth + 36 // + 左右 padding 18*2
     document.body.removeChild(probe)
@@ -190,18 +191,62 @@
     }
   }
 
-  /** 重渲染气泡（rAF 合并高频增量，限高后滚到底部）。 */
-  function renderBubble(withCaret) {
-    caretVisible = withCaret
-    refreshCloseButton()
-    if (renderPending) return
-    renderPending = true
-    requestAnimationFrame(function () {
-      renderPending = false
-      bubbleText.innerHTML = renderRich(raw) + (caretVisible ? caretHtml : '')
-      fitBubbleWidth()
-      bubbleText.scrollTop = bubbleText.scrollHeight
+  /** 创建一条消息元素。 */
+  function createMsgEl(entry) {
+    const el = document.createElement('div')
+    el.className = 'msg msg-' + entry.role
+    if (entry.role === 'user') {
+      el.textContent = entry.raw
+    } else {
+      const rich = document.createElement('div')
+      rich.className = 'rich'
+      rich.innerHTML = renderRich(entry.raw)
+      el.appendChild(rich)
+    }
+    return el
+  }
+
+  /** 全量重建会话面板。 */
+  function renderAll() {
+    transcript.innerHTML = ''
+    conversation.forEach(function (entry) {
+      transcript.appendChild(createMsgEl(entry))
     })
+  }
+
+  /** 仅重渲染最后一条 assistant（流式增量用）。 */
+  function renderLastWithCaret() {
+    const richEl = transcript.querySelector('.msg-assistant:last-of-type .rich')
+    if (!richEl) return
+    const last = conversation[lastEntryIndex]
+    if (!last) return
+    richEl.innerHTML = renderRich(last.raw) + caretHtml
+    scrollTranscriptBottom()
+    fitBubbleWidthSoon()
+  }
+
+  /** 流式期间节流重适配气泡宽度（rAF 合并）。 */
+  let widthFitPending = false
+  function fitBubbleWidthSoon() {
+    if (widthFitPending) return
+    widthFitPending = true
+    requestAnimationFrame(function () {
+      widthFitPending = false
+      fitBubbleWidth()
+    })
+  }
+
+  function scrollTranscriptBottom() {
+    transcript.scrollTop = transcript.scrollHeight
+  }
+
+  /** 显示会话面板（气泡）。 */
+  function showTranscript() {
+    bubble.hidden = false
+    renderAll()
+    fitBubbleWidth()
+    scrollTranscriptBottom()
+    refreshCloseButton()
   }
 
   /**
@@ -212,34 +257,10 @@
     bubbleClose.style.display = (!streaming && !bubble.hidden) ? '' : 'none'
   }
 
-  /** 对话完成后定时自动收起气泡（可读内容的时间窗）。 */
-  function scheduleAutoHide(ms) {
-    if (autoHideTimer) clearTimeout(autoHideTimer)
-    autoHideTimer = setTimeout(function () {
-      if (!streaming) hideBubble()
-    }, ms)
-  }
-
-  function showBubble(text, withCaret) {
-    raw = text || ''
-    bubble.hidden = false
-    renderBubble(withCaret)
-  }
-
-  function appendDelta(text) {
-    raw += text
-    renderBubble(true)
-  }
-
+  /** 隐藏会话面板（对话记录保留，重新打开时还在）。 */
   function hideBubble() {
-    if (autoHideTimer) {
-      clearTimeout(autoHideTimer)
-      autoHideTimer = null
-    }
     bubble.hidden = true
-    bubbleText.textContent = ''
-    raw = ''
-    caretVisible = false
+    refreshCloseButton()
   }
 
   /* ---------- 输入框 ---------- */
@@ -247,6 +268,8 @@
     if (streaming) return
     inputBar.hidden = false
     setState('listening')
+    // 有历史会话时让面板重新可见，方便边看边聊
+    if (conversation.length > 0 && bubble.hidden) showTranscript()
     inputText.focus()
   }
 
@@ -259,15 +282,15 @@
   function send() {
     const text = inputText.value.trim()
     if (!text || streaming) return
-    if (autoHideTimer) {
-      clearTimeout(autoHideTimer)
-      autoHideTimer = null
-    }
     inputBar.hidden = true
     inputText.value = ''
     streaming = true
     setState('thinking')
-    showBubble('', true)
+    // 追加本轮：用户消息 + 空回复（流式填充）
+    conversation.push({ role: 'user', raw: text })
+    conversation.push({ role: 'assistant', raw: '' })
+    lastEntryIndex = conversation.length - 1
+    showTranscript()
     post('chat', { text })
   }
 
@@ -301,14 +324,9 @@
 
   window.addEventListener('mouseup', function () {
     if (!dragging && !moved && downX !== 0) {
-      // 单击：气泡开着（非流式）→ 先关气泡；否则切换输入框
-      if (!bubble.hidden && !streaming) {
-        hideBubble()
-      } else if (inputBar.hidden) {
-        openInput()
-      } else {
-        closeInput()
-      }
+      // 单击：切换输入框（会话面板保持可见，方便接着聊）
+      if (inputBar.hidden) openInput()
+      else closeInput()
     }
     downX = 0
     downY = 0
@@ -316,7 +334,7 @@
     dragging = false
   })
 
-  // 气泡右上角 ✕：显式关闭
+  // 气泡右上角 ✕：显式关闭面板（记录保留）
   bubbleClose.addEventListener('click', function (e) {
     e.stopPropagation()
     hideBubble()
@@ -332,31 +350,73 @@
   window.petBridge = {
     setState: setState,
 
-    /** 回复增量（逐字渲染） */
-    renderDelta: function (text) {
-      if (!streaming) return
-      if (bubble.hidden) showBubble('', true)
-      appendDelta(text)
+    /** 载入 host 端持久化的会话记录（启动时由 Swift 调用）。 */
+    loadHistory: function (turns) {
+      if (streaming) return
+      if (!Array.isArray(turns)) return
+      conversation = turns
+        .filter(function (t) {
+          return t && (t.role === 'user' || t.role === 'assistant') && typeof t.content === 'string'
+        })
+        .map(function (t) {
+          return { role: t.role, raw: t.content }
+        })
+      lastEntryIndex = -1
+      if (conversation.length > 0) showTranscript()
     },
 
-    /** 回复结束：说完歇 1.6s 回待机，15s 后自动收起气泡 */
+    /** 清空会话记录（托盘「清空对话记忆」时由 Swift 调用）。 */
+    clearTranscript: function () {
+      conversation = []
+      lastEntryIndex = -1
+      bubble.hidden = true
+      transcript.innerHTML = ''
+      refreshCloseButton()
+    },
+
+    /** 回复增量（追加到当前流式回复，逐字渲染） */
+    renderDelta: function (text) {
+      if (!streaming) return
+      if (lastEntryIndex < 0 || !conversation[lastEntryIndex]) return
+      conversation[lastEntryIndex].raw += text
+      renderLastWithCaret()
+    },
+
+    /** 回复结束：移除光标、说完歇 1.6s 回待机（不自动收起，保留会话面板） */
     renderDone: function () {
       streaming = false
+      // 移除末尾光标
+      const richEl = transcript.querySelector('.msg-assistant:last-of-type .rich')
+      if (richEl) richEl.innerHTML = renderRich(conversation[lastEntryIndex] ? conversation[lastEntryIndex].raw : '')
+      fitBubbleWidthSoon()
       refreshCloseButton()
       if (state === 'thinking') setState('speaking')
       setTimeout(function () {
         if (!streaming && state === 'speaking') setState('idle')
-        scheduleAutoHide(15000)
       }, 1600)
     },
 
-    /** 出错 */
+    /** 出错：以一条临时 assistant 消息呈现，3s 后移除 */
     renderError: function (message) {
       streaming = false
+      const idx = conversation.push({
+        role: 'assistant',
+        raw: '😢 ' + (message || '出错了'),
+      }) - 1
+      lastEntryIndex = idx
+      showTranscript()
       refreshCloseButton()
-      showBubble('😢 ' + (message || '出错了'), false)
       setTimeout(function () {
-        if (!streaming) hideBubble()
+        if (!streaming && conversation[idx] && idx === conversation.length - 1) {
+          conversation.pop()
+          if (conversation.length === 0) {
+            bubble.hidden = true
+            transcript.innerHTML = ''
+          } else {
+            renderAll()
+            fitBubbleWidth()
+          }
+        }
         if (state !== 'offline') setState('idle')
       }, 3000)
     },
@@ -367,48 +427,43 @@
       streaming = false
       setState('offline')
       offlineTag.hidden = false
-      hideBubble()
       inputBar.hidden = true
+      hideBubble()
     },
 
     /** 恢复在线 */
     renderOnline: function () {
-      const wasOffline = state === 'offline'
       setState('idle')
       offlineTag.hidden = true
-      if (wasOffline && !greetingShown) {
-        greetingShown = true
-        showBubble('嗨！我是小鲸鱼，点我聊天～', false)
-        setTimeout(hideBubble, 3200)
-      }
-    },
-
-    /** 一键问候（初次上屏） */
-    greet: function () {
-      if (greetingShown) return
-      greetingShown = true
-      showBubble('嗨！我是小鲸鱼，点我聊天～', false)
-      setTimeout(hideBubble, 3200)
+      if (conversation.length > 0) showTranscript()
     },
 
     /** 调试：注入一条长回复（--snapshot 模式验证气泡布局用） */
     debugLongBubble: function (text) {
-      showBubble(text || '长文本', false)
+      conversation = [{ role: 'assistant', raw: text || '长文本' }]
+      lastEntryIndex = conversation.length - 1
+      showTranscript()
       setState('speaking')
     },
 
     /** 调试：模拟真实"流式→完成"路径（验证完成后 ✕ 显示） */
     debugSimulateDone: function (text) {
+      conversation = [
+        { role: 'user', raw: '验证消息' },
+        { role: 'assistant', raw: '' },
+      ]
+      lastEntryIndex = 1
       streaming = true
-      showBubble('', true)
-      appendDelta(text || '')
+      showTranscript()
+      conversation[1].raw = text || ''
+      renderLastWithCaret()
       // 与真实路径一致：由 Swift 调 window.petBridge.renderDone()
       window.petBridge.renderDone()
     },
 
-    /** 调试：把渲染后的纯文本写进 document.title（Swift 读 webView.title 取回） */
+    /** 调试：把会话纯文本写进 document.title（Swift 读 webView.title 取回） */
     debugDump: function () {
-      document.title = 'PET_DUMP:' + (bubbleText.innerText || '').slice(0, 600)
+      document.title = 'PET_DUMP:' + (transcript.innerText || '').slice(0, 600)
     },
   }
 

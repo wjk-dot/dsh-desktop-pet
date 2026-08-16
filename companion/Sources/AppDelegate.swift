@@ -23,18 +23,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         setupTray()
 
-        // 连接状态变化 → 页面离线/在线
+        // 连接状态变化 → 页面离线/在线 + 恢复在线时拉取会话记录
         host.onConnectionChange = { [weak self] online in
             DispatchQueue.main.async {
                 self?.window?.notifyConnection(online)
+                if online {
+                    self?.host?.fetchHistory()
+                }
             }
         }
         host.start()
-
-        // 初次上屏问候
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
-            self?.window?.greet()
-        }
 
         // 调试模式：--snapshot <path> —— 注入一条长回复并导出渲染快照后退出
         let args = CommandLine.arguments
@@ -74,7 +72,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     "rect:r?[r.left,r.top,r.width,r.height]:null,bubbleHidden:b.hidden," +
                     "bubbleRect:[br.left,br.top,br.width,br.height]," +
                     "offsetH:b.offsetHeight,scrollH:b.scrollHeight,clientH:b.clientHeight," +
-                    "text:document.getElementById('bubbleText').innerText});})()"
+                    "text:document.getElementById('transcript').innerText});})()"
                 ) { value in
                     let text = (value as? String) ?? ""
                     let txtPath = path + ".txt"
