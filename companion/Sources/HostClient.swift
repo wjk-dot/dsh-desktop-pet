@@ -9,6 +9,8 @@ final class HostClient: NSObject, URLSessionDataDelegate {
     var onConnectionChange: ((Bool) -> Void)?
     /// 桌宠开关变化（主线程回调；DSH 界面开关控制）。
     var onEnabledChange: ((Bool) -> Void)?
+    /// DSH 宿主进程退出回调（生命周期联动：伴生应用随之退出）。
+    var onHostExit: (() -> Void)?
 
     /// 当前桌宠是否启用（来自桥文件；关闭时禁止对话）。
     private(set) var isEnabled = true
@@ -19,6 +21,9 @@ final class HostClient: NSObject, URLSessionDataDelegate {
     private var bridgeTimer: Timer?
     private var healthTimer: Timer?
     private var historyTimer: Timer?
+    private var pidTimer: Timer?
+    private var hostPid: pid_t?
+    private var pidDeadCount = 0
     private var chatSession: URLSession!
 
     // 当前进行中的对话
@@ -69,6 +74,14 @@ final class HostClient: NSObject, URLSessionDataDelegate {
         }
         RunLoop.main.add(historyTimer, forMode: .common)
         self.historyTimer = historyTimer
+
+        // 生命周期联动：监视桥文件里的 host PID，DSH 彻底退出后伴生应用一起退出。
+        let pidTimer = Timer(timeInterval: 2.0, repeats: true) { [weak self] _ in
+            self?.checkHostPid()
+        }
+        RunLoop.main.add(pidTimer, forMode: .common)
+        self.pidTimer = pidTimer
+
         checkHealth()
         fetchHistory()
     }
@@ -77,7 +90,24 @@ final class HostClient: NSObject, URLSessionDataDelegate {
         bridgeTimer?.invalidate()
         healthTimer?.invalidate()
         historyTimer?.invalidate()
+        pidTimer?.invalidate()
         currentTask?.cancel()
+    }
+
+    /// 检查桥文件 host PID 是否存活；连续三次（约 6s）"PID 失活且健康检查离线"
+    /// 才回调退出（伴生应用与 DSH 生命周期绑定）。宽限避免宿主重启瞬时误退：
+    /// 重启时新 host 会快速重写桥文件（新 PID），0.1s 桥轮询随即恢复判定。
+    private func checkHostPid() {
+        guard let pid = hostPid, pid > 0 else { return }
+        let alive = (kill(pid, 0) == 0) || (errno == EPERM)
+        if alive || lastOnline != false {
+            pidDeadCount = 0
+        } else {
+            pidDeadCount += 1
+            if pidDeadCount >= 3 {
+                DispatchQueue.main.async { self.onHostExit?() }
+            }
+        }
     }
 
     // MARK: - 端口桥
@@ -95,6 +125,9 @@ final class HostClient: NSObject, URLSessionDataDelegate {
             return
         }
         baseURL = URL(string: "http://127.0.0.1:\(port)")
+        if let pid = obj["pid"] as? Int, pid > 0 {
+            hostPid = pid_t(pid)
+        }
         if let enabled = obj["enabled"] as? Bool {
             isEnabled = enabled
             if enabled != lastEnabled {

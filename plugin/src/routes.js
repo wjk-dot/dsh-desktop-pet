@@ -21,10 +21,11 @@ function sse(res, data) {
 /**
  * 构造桌宠路由族。
  * @param {{service: import('./chat.js').PetChatService, writeBridge: () => string,
- *          loadEnabled: () => boolean, saveEnabled: (enabled: boolean) => void}} deps
+ *          loadEnabled: () => boolean, saveEnabled: (enabled: boolean) => void,
+ *          companionApp: string, launchCompanion: (appPath: string) => boolean}} deps
  * @returns {import('@deepseek-ai/dsh-host-webserver').WebRoute[]}
  */
-export function makePetRoutes({ service, writeBridge, loadEnabled, saveEnabled }) {
+export function makePetRoutes({ service, writeBridge, loadEnabled, saveEnabled, companionApp, launchCompanion }) {
   return [
     {
       kind: 'exact',
@@ -60,6 +61,11 @@ export function makePetRoutes({ service, writeBridge, loadEnabled, saveEnabled }
             }
             saveEnabled(body.enabled)
             writeBridge() // 桥文件携带新开关状态，伴生应用下一次轮询生效
+            // 打开时立即拉起伴生应用（幂等）；关闭时伴生应用仍在运行，
+            // 由其自行隐藏（进程与 DSH 生命周期绑定，DSH 退出时一起退）。
+            if (body.enabled && companionApp) {
+              launchCompanion(companionApp)
+            }
             json(res, 200, { ok: true, enabled: body.enabled })
           },
           (error) => json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) }),

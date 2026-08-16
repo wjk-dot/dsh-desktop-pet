@@ -48,6 +48,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.updateTray(enabled: enabled)
             }
         }
+
+        // 生命周期联动：DSH 宿主进程退出 → 伴生应用一起退出
+        host.onHostExit = {
+            DispatchQueue.main.async {
+                NSApp.terminate(nil)
+            }
+        }
         host.start()
 
         // 恢复持久化的桌宠尺寸（页面加载后注入）
