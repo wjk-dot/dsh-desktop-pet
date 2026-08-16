@@ -81,10 +81,11 @@ export function makePetRoutes({ service, writeBridge, loadEnabled, saveEnabled }
     {
       kind: 'exact',
       path: '/api/pet/history',
-      handler: (req, res) => {
+      handler: async (req, res) => {
         if (!requireMethod(req, res, 'GET')) return
         try {
-          json(res, 200, { ok: true, turns: service.historyView() })
+          const turns = await service.refreshHistory()
+          json(res, 200, { ok: true, turns })
         } catch (error) {
           json(res, 500, { ok: false, error: error instanceof Error ? error.message : String(error) })
         }

@@ -84,9 +84,18 @@ final class PetWindow: NSWindow {
     /// 把窗口拉回可见区域（布局/拖动/恢复位置都可能把窗口推出屏幕，
     /// 导致"只看到气泡看不到鲸鱼"这类问题）。贴边状态是刻意部分离屏，跳过。
     func clampToVisible() {
-        guard dockEdge == nil, let screen = screenContaining() else { return }
+        guard dockEdge == nil else { return }
+        let r = clampedToVisible(frame, on: screenContaining())
+        if r != frame {
+            setFrame(r, display: true)
+        }
+    }
+
+    /// 将指定 frame 钳到可见屏幕。必须用于动画的目标 frame，不能等动画开始后再修。
+    private func clampedToVisible(_ rect: NSRect, on screen: NSScreen?) -> NSRect {
+        guard let screen else { return rect }
         let vf = screen.visibleFrame
-        var r = frame
+        var r = rect
         if r.width <= vf.width && r.height <= vf.height {
             r.origin.x = min(max(r.minX, vf.minX), vf.maxX - r.width)
             r.origin.y = min(max(r.minY, vf.minY), vf.maxY - r.height)
@@ -94,9 +103,18 @@ final class PetWindow: NSWindow {
             r.origin.x = max(r.minX, vf.minX)
             r.origin.y = min(max(r.minY, vf.minY), vf.maxY - r.height)
         }
-        if r != frame {
-            setFrame(r, display: true)
+        return r
+    }
+
+    /// 当前窗口只剩一条边时也要拉回来。`intersects` 单独使用会把这种坏位置
+    /// 当成有效位置，尤其在多屏和贴边调试状态下很容易复现。
+    private func screenForVisibleWindow(_ rect: NSRect) -> NSScreen? {
+        let candidates = NSScreen.screens.compactMap { screen -> (NSScreen, CGFloat)? in
+            let area = screen.visibleFrame.intersection(rect)
+            guard !area.isNull, area.width > 0, area.height > 0 else { return nil }
+            return (screen, area.width * area.height)
         }
+        return candidates.max(by: { $0.1 < $1.1 })?.0
     }
 
     // MARK: - 动态窗口尺寸（JS 布局消息驱动）
@@ -104,33 +122,39 @@ final class PetWindow: NSWindow {
     /// 图标尺寸持久化键。
     private static let iconSizeKey = "petIconSize"
 
-    /// 按 JS 布局消息调整窗口：底边锚定不动（桌宠原地），宽度/高度自适应。
+    /// 按 JS 布局消息调整窗口。
+    ///
+    /// 气泡、输入框和桌宠共用一个 WKWebView。紧凑态若把原生窗口缩到图标尺寸，
+    /// 历史会话恢复时网页可能先画出气泡而窗口仍是 168px，导致页面被裁成只露一角。
+    /// 因此原生层始终保留完整聊天画布；网页空白区域透明，不影响桌宠外观。
     func applyLayout(mode: String, width: CGFloat, height: CGFloat, iconSize: CGFloat) {
         guard width > 40, height > 40 else { return }
         layoutCompact = (mode == "compact")
         if iconSize > 0 {
             UserDefaults.standard.set(Double(iconSize), forKey: PetWindow.iconSizeKey)
         }
-        let target = NSRect(
-            x: frame.midX - width / 2,
+        let canvasWidth = PetWindow.windowSize.width
+        let canvasHeight = max(PetWindow.windowSize.height, iconSize + 406)
+        var target = NSRect(
+            x: frame.midX - canvasWidth / 2,
             y: frame.minY,
-            width: width,
-            height: height
+            width: canvasWidth,
+            height: canvasHeight
         )
-        guard target != frame else { return }
-        animate(to: target, duration: 0.18)
         // 尺寸变化后若处于贴边状态，重新贴边保持"尾巴"大小
         if let edge = dockEdge, let screen = screenContaining() {
-            var r = frame
+            var r = target
             switch edge {
             case .left: r.origin.x = screen.frame.minX - r.width + dockPeek
             case .right: r.origin.x = screen.frame.maxX - dockPeek
             case .bottom: r.origin.y = screen.frame.minY - r.height + dockPeek
             }
-            animate(to: r, duration: 0.18)
+            target = r
         } else {
-            clampToVisible()
+            target = clampedToVisible(target, on: screenContaining())
         }
+        guard target != frame else { return }
+        animate(to: target, duration: 0.18)
     }
 
     // MARK: - 拖动（JS 判定拖动手势后调用）
@@ -223,7 +247,9 @@ final class PetWindow: NSWindow {
     }
 
     private func screenContaining() -> NSScreen? {
-        NSScreen.screens.first { $0.frame.intersects(frame) } ?? NSScreen.main
+        screenForVisibleWindow(frame)
+            ?? NSScreen.screens.first { $0.frame.intersects(frame) }
+            ?? NSScreen.main
     }
 
     /// 鼠标是否处于贴边热区（边缘附近 + 窗口纵向范围）。
@@ -315,7 +341,10 @@ final class PetWindow: NSWindow {
             let rect = NSRectFromString(stored)
             // 保存的位置必须落在某个屏幕的可见区内，否则回默认角落
             // （历史坏位置会把窗口推到屏幕外，只露出气泡一角）。
-            if let screen = NSScreen.screens.first(where: { $0.visibleFrame.intersects(rect) }) {
+            if let screen = NSScreen.screens.first(where: {
+                let area = $0.visibleFrame.intersection(rect)
+                return !area.isNull && area.width >= min(rect.width, 160) && area.height >= min(rect.height, 160)
+            }) {
                 let vf = screen.visibleFrame
                 var p = rect.origin
                 p.x = min(max(p.x, vf.minX), vf.maxX - rect.width)

@@ -16,7 +16,9 @@ final class HostClient: NSObject, URLSessionDataDelegate {
 
     private let homeDir: URL
     private var baseURL: URL?
+    private var bridgeTimer: Timer?
     private var healthTimer: Timer?
+    private var historyTimer: Timer?
     private var chatSession: URLSession!
 
     // 当前进行中的对话
@@ -49,16 +51,32 @@ final class HostClient: NSObject, URLSessionDataDelegate {
 
     func start() {
         reloadBridge()
+        // 开关由 DSH 写入一个本地 JSON 文件。单独高频读取这个小文件，
+        // 避免把 UI 响应时间绑在健康检查的 2 秒周期上。
+        let bridgeTimer = Timer(timeInterval: 0.1, repeats: true) { [weak self] _ in
+            self?.reloadBridge()
+        }
+        RunLoop.main.add(bridgeTimer, forMode: .common)
+        self.bridgeTimer = bridgeTimer
+
         let timer = Timer(timeInterval: 2.0, repeats: true) { [weak self] _ in
             self?.checkHealth()
         }
         RunLoop.main.add(timer, forMode: .common)
         healthTimer = timer
+        let historyTimer = Timer(timeInterval: 2.0, repeats: true) { [weak self] _ in
+            self?.fetchHistory()
+        }
+        RunLoop.main.add(historyTimer, forMode: .common)
+        self.historyTimer = historyTimer
         checkHealth()
+        fetchHistory()
     }
 
     func stop() {
+        bridgeTimer?.invalidate()
         healthTimer?.invalidate()
+        historyTimer?.invalidate()
         currentTask?.cancel()
     }
 

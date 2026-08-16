@@ -17,6 +17,7 @@ export const MEMORY_FILE = 'pet-chat.json'
  * @typedef {Object} ChatMemoryEntry
  * @property {'user'|'assistant'} role
  * @property {string} content
+ * @property {string} [at] ISO-8601 记录时间。
  */
 
 /** 校验一条记忆条目是否可接受。 */
@@ -24,12 +25,13 @@ function validEntry(entry) {
   return (
     typeof entry === 'object' && entry !== null &&
     (entry.role === 'user' || entry.role === 'assistant') &&
-    typeof entry.content === 'string'
+    typeof entry.content === 'string' &&
+    (entry.at === undefined || typeof entry.at === 'string')
   )
 }
 
 /**
- * 滚动记忆账本：追加、截断、持久化。
+ * 对话账本：完整持久化；模型调用单独读取最近窗口，避免上下文无限增长。
  */
 export class PetMemory {
   /**
@@ -66,13 +68,11 @@ export class PetMemory {
   }
 
   /**
-   * 追加一条并截断到上限。
+   * 追加一条并持久化。完整历史用于桌面端工作区归档。
    * @param {ChatMemoryEntry} entry
    */
   push(entry) {
-    this.entries.push({ role: entry.role, content: entry.content })
-    const cap = this.maxTurns * 2
-    if (this.entries.length > cap) this.entries = this.entries.slice(-cap)
+    this.entries.push({ role: entry.role, content: entry.content, ...(typeof entry.at === 'string' ? { at: entry.at } : {}) })
     this.save()
   }
 
@@ -85,5 +85,10 @@ export class PetMemory {
   /** 当前记忆快照（顺序拷贝）。 */
   history() {
     return this.entries.slice()
+  }
+
+  /** 供 LLM 使用的滚动上下文窗口。 */
+  contextHistory() {
+    return this.entries.slice(-(this.maxTurns * 2))
   }
 }

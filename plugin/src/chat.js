@@ -5,15 +5,10 @@
  * 模型默认跟随全局 agent-default-model 选择，可独立覆盖。
  */
 
-import { createAssistantMessage, createUserMessage } from '@deepseek-ai/dsh-llm'
 import { dshHome } from './dsh-home.js'
 import { PetMemory } from './memory.js'
+import { PetNativeSession } from './native-session.js'
 import { buildPersona } from './persona.js'
-
-/** 纯文本内容块。 */
-function textBlock(text) {
-  return { type: 'text', text }
-}
 
 /**
  * @typedef {Object} PetChatConfig
@@ -26,7 +21,7 @@ function textBlock(text) {
  */
 
 /**
- * 桌宠对话服务：组装消息 → llm.stream → 逐字产出；结束后更新记忆。
+ * 桌宠对话服务：通过原生 DSH Agent session 对话；左栏/UI/桌宠共用同一记录。
  */
 export class PetChatService {
   /**
@@ -41,6 +36,7 @@ export class PetChatService {
       ...config,
     }
     this.memory = new PetMemory(dshHome(), this.config.maxHistoryTurns)
+    this.nativeSession = new PetNativeSession(ctx, this.memory.history())
   }
 
   /** 当前系统提示词。 */
@@ -62,51 +58,15 @@ export class PetChatService {
     }
     const messageText = message.trim()
 
-    // 模型选择：配置覆盖 > 全局 agent-default-model
-    const selection = this.ctx.agentDefaultModel.currentSelection()
-    const provider = this.config.model?.provider ?? selection.provider
-    const model = this.config.model?.model ?? selection.model
-    const reasoningEffort = this.config.model?.reasoningEffort ?? selection.reasoningEffort
-
-    // 组装消息：滚动历史 + 本次提问
-    const messages = [
-      ...this.memory.history().map((m) =>
-        m.role === 'user'
-          ? createUserMessage({ content: [textBlock(m.content)], source: { kind: 'user' } })
-          : createAssistantMessage({ content: [textBlock(m.content)], source: { provider, model } }),
-      ),
-      createUserMessage({ content: [textBlock(messageText)], source: { kind: 'user' } }),
-    ]
-
-    const options = {
-      provider,
-      model,
-      system: this.systemPrompt(),
-      messages,
-      temperature: this.config.temperature,
-      maxTokens: this.config.maxTokens,
-      signal,
-    }
-    if (reasoningEffort !== undefined) options.reasoningEffort = reasoningEffort
-
     let reply = ''
-    try {
-      const stream = this.ctx.llm.stream(options)
-      for await (const chunk of stream) {
-        if (chunk.type === 'text-delta') {
-          reply += chunk.text
-          yield chunk.text
-        } else if (chunk.type === 'finish') {
-          break
-        }
-      }
-    } catch (error) {
-      // 记忆只记完整轮次：LLM 调用失败不入记忆
-      throw error
+    for await (const text of this.nativeSession.prompt(messageText, signal)) {
+      reply += text
+      yield text
     }
 
-    this.memory.push({ role: 'user', content: messageText })
-    this.memory.push({ role: 'assistant', content: reply || '（无回复）' })
+    const history = await this.nativeSession.history()
+    this.memory.entries = history
+    this.memory.save()
   }
 
   /** 清空对话记忆。 */
@@ -116,7 +76,14 @@ export class PetChatService {
 
   /** 当前会话记录（供 /api/pet/history 读取，伴生应用启动时载入显示）。 */
   historyView() {
-    return this.memory.history().map((m) => ({ role: m.role, content: m.content }))
+    return this.memory.history().map((m) => ({ role: m.role, content: m.content, ...(m.at === undefined ? {} : { at: m.at }) }))
+  }
+
+  async refreshHistory() {
+    const history = await this.nativeSession.history()
+    this.memory.entries = history
+    this.memory.save()
+    return history
   }
 
   /** 当前配置视图（供 /api/pet/config 读取）。 */
@@ -132,5 +99,9 @@ export class PetChatService {
       },
       memoryTurns: Math.floor(this.memory.history().length / 2),
     }
+  }
+
+  dispose() {
+    this.nativeSession.dispose()
   }
 }

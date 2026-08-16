@@ -14,7 +14,7 @@ import { makePetRoutes } from './routes.js'
 export const name = 'desktop-pet'
 
 /** 依赖服务：web 服务器（挂路由/注入开关）、LLM 通道、全局默认模型。 */
-export const inject = ['webServer', 'llm', 'agentDefaultModel']
+export const inject = ['webServer', 'llm', 'agentDefaultModel', 'workspaceRegistry', 'apiProxy']
 
 /**
  * 注入到 DSH 界面左下角的桌宠开关脚本（<script> 标签体，见 toggle.js）。
@@ -36,6 +36,9 @@ function toggleScriptTag() {
  */
 export function apply(ctx, config = {}) {
   const service = new PetChatService(ctx, config)
+  void service.refreshHistory().catch((error) => {
+    ctx.logger.warn(`desktop-pet: unable to initialize native session: ${error instanceof Error ? error.message : String(error)}`)
+  })
 
   // 刷新端口桥：插件挂载时写一次（桥文件携带桌宠开关状态）。
   const writeBridge = () => writeBridgeFile(ctx.webServer.port)
@@ -68,6 +71,7 @@ export function apply(ctx, config = {}) {
   ctx.on('dispose', () => {
     try {
       service.memory.save()
+      service.dispose()
     } catch {
       // 落盘失败不影响退出
     }

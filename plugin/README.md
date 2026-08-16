@@ -9,8 +9,9 @@ DeepSeek Harness（DSH）的桌面伴侣：一只以 DeepSeek 图标为形象的
 - **点击即可对话**：不用点开 DSH 聊天窗口，点桌宠弹出输入框，回车发送。
 - **头顶气泡流式回复**：DeepSeek 的回答逐字出现在桌宠头顶的气泡里。
 - **原生悬浮窗口**：Swift 实现，透明、无边框、永远置顶；DSH 主窗口关闭（托盘常驻）时桌宠依然在线。
-- **纯聊天模式**：走官方轻量 LLM 通道（`ctx.llm.stream`），不经过完整 agent 循环，快且省。
-- **滚动记忆**：默认保留最近 12 轮对话，持久化到 `$DSH_HOME/pet-chat.json`。
+- **原生会话**：启动后会在当前工作区创建一个固定的 `桌宠对话` session，直接出现在左侧会话列表。
+- **双端连续对话**：桌宠发言与 Harness 界面发言进入同一个 Agent session；两边都能看到记录并继续同一上下文。
+- **历史迁移**：旧版 `$DSH_HOME/pet-chat.json` 会作为首次原生会话的上下文导入；已有 `桌宠对话记录.md` 保留为旧备份，不再自动生成。
 - **模型跟随全局**：默认使用 DSH 设置的默认模型（provider/model/reasoning），可单独覆盖。
 
 ## 架构
@@ -21,7 +22,7 @@ DeepSeek Harness（DSH）的桌面伴侣：一只以 DeepSeek 图标为形象的
 │    └─ 宠物渲染（DeepSeek 图标 + CSS 动画）+ 头顶气泡 + 输入框
 │         │  HTTP loopback + SSE
 ├─ plugin/     DSH 插件 host 半区（cordis）
-│    ├─ /api/pet/chat     POST → SSE 流式回复（ctx.llm.stream）
+│    ├─ /api/pet/chat     POST → SSE 流式转发原生 Agent session
 │    ├─ /api/pet/config   读取配置/模型
 │    ├─ /api/pet/memory   清空记忆
 │    ├─ /api/pet/bridge   刷新端口桥

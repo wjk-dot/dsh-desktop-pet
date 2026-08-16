@@ -21,6 +21,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let window = PetWindow(host: host)
         self.window = window
         window.orderFrontRegardless()
+        NSApp.activate(ignoringOtherApps: false)
+        // LSUIElement 应用首次启动时，WebView 装载会短暂重排窗口；下一轮 RunLoop
+        // 再前置一次，避免透明无边框窗口被系统留在后台或被裁出当前屏幕。
+        DispatchQueue.main.async { [weak self] in
+            self?.window?.clampToVisible()
+            self?.window?.orderFrontRegardless()
+        }
 
         setupTray()
 

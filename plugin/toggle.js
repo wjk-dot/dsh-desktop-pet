@@ -1,6 +1,6 @@
 /* 桌宠开关 v2：由插件注入 DSH 界面（随每次页面响应读取本文件）。
  * - 默认右上角、可拖拽到任意位置（localStorage 记忆）
- * - 每 2s 轮询真实状态，避免与外部切换不同步
+ * - 点击先即时更新，服务端响应后再确认；轮询只负责外部切换兜底
  * - 点击立即切换 /api/pet/control；失败显示 ⚠ 提示
  */
 (function () {
@@ -25,6 +25,7 @@
 
   var on = true;
   var errText = '';
+  var pending = false;
   function paint() {
     btn.classList.toggle('off', !on);
     btn.textContent = errText ? ('⚠ ' + errText) : (on ? '🐋 开' : '🐋 关');
@@ -38,6 +39,7 @@
     if (d && typeof d.enabled === 'boolean') { on = d.enabled; paint(); }
   }
   function refresh() {
+    if (pending) return;
     fetch('/api/pet/control', { cache: 'no-store' })
       .then(function (r) { return r.json(); }).then(apply)
       .catch(function () {});
@@ -84,16 +86,30 @@
   btn.addEventListener('click', function (e) {
     if (drag && drag.moved) { e.stopPropagation(); return; }
     e.stopPropagation();
+    if (pending) return;
+    var desired = !on;
+    pending = true;
+    on = desired;
+    paint();
     fetch('/api/pet/control', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ enabled: !on }),
-    }).then(function (r) { return r.json(); }).then(apply)
-      .catch(function () { fail('失败'); });
+      body: JSON.stringify({ enabled: desired }),
+    }).then(function (r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    }).then(function (data) {
+      pending = false;
+      apply(data);
+    }).catch(function () {
+      pending = false;
+      on = !desired;
+      fail('失败');
+    });
   });
 
   restorePos();
   paint();
   refresh();
-  setInterval(refresh, 2000);
+  setInterval(refresh, 5000);
 })();
