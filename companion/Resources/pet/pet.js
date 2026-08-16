@@ -20,9 +20,51 @@
   const inputText = document.getElementById('inputText')
   const sendBtn = document.getElementById('sendBtn')
   const offlineTag = document.getElementById('offlineTag')
+  const petEl = document.getElementById('pet')
+  const petIconEl = document.getElementById('petIcon')
 
   let state = 'idle'        // idle | listening | thinking | speaking | offline
   let streaming = false     // 正在等待/接收回复
+
+  /* ---------- 桌宠尺寸（可滚轮缩放，Swift 持久化） ---------- */
+
+  let iconSize = 120                      // 图标边长 px（默认比旧版 150 更小巧）
+  const ICON_MIN = 70
+  const ICON_MAX = 200
+  let layoutMode = 'compact'              // compact | chat
+
+  /** 应用图标尺寸（桌宠容器、图标、气泡锚点随尺寸联动）。 */
+  function applyIconSize() {
+    petEl.style.width = (iconSize + 20) + 'px'
+    petEl.style.height = (iconSize + 20) + 'px'
+    petIconEl.style.width = iconSize + 'px'
+    petIconEl.style.height = iconSize + 'px'
+    // 气泡锚在桌宠头顶上方 16px（桌宠底 70 + 容器高 + 16）
+    bubble.style.bottom = (iconSize + 106) + 'px'
+  }
+
+  /**
+   * 窗口布局自适应：
+   * - compact：气泡/输入框都隐藏时，窗口收缩到只包住桌宠
+   * - chat：窗口展开，给气泡（292px）和输入框让位
+   */
+  function applyLayout() {
+    const chat = !bubble.hidden || !inputBar.hidden || streaming
+    layoutMode = chat ? 'chat' : 'compact'
+    let w, h
+    if (chat) {
+      w = 380
+      h = iconSize + 406
+      petEl.style.bottom = '70px'
+    } else {
+      w = iconSize + 48
+      h = iconSize + 48
+      petEl.style.bottom = '12px'
+    }
+    stage.style.width = w + 'px'
+    stage.style.height = h + 'px'
+    post('layout', { mode: layoutMode, width: w, height: h, size: iconSize })
+  }
 
   /* ---------- 状态 ---------- */
   function setState(next) {
@@ -247,6 +289,7 @@
     fitBubbleWidth()
     scrollTranscriptBottom()
     refreshCloseButton()
+    applyLayout()
   }
 
   /**
@@ -261,6 +304,7 @@
   function hideBubble() {
     bubble.hidden = true
     refreshCloseButton()
+    applyLayout()
   }
 
   /* ---------- 输入框 ---------- */
@@ -270,6 +314,7 @@
     setState('listening')
     // 有历史会话时让面板重新可见，方便边看边聊
     if (conversation.length > 0 && bubble.hidden) showTranscript()
+    applyLayout()
     inputText.focus()
   }
 
@@ -277,6 +322,7 @@
     inputBar.hidden = true
     inputText.value = ''
     if (!streaming && state !== 'offline') setState('idle')
+    applyLayout()
   }
 
   function send() {
@@ -294,8 +340,7 @@
     post('chat', { text })
   }
 
-  /* ---------- 点击 vs 拖动 ---------- */
-  const petEl = document.getElementById('pet')
+  /* ---------- 点击 vs 拖动 vs 滚轮缩放 ---------- */
   let downX = 0, downY = 0, moved = false, dragging = false
 
   petEl.addEventListener('mousedown', function (e) {
@@ -305,6 +350,17 @@
     moved = false
     dragging = false
   })
+
+  // 滚轮缩放桌宠（上滚放大 / 下滚缩小）
+  petEl.addEventListener('wheel', function (e) {
+    if (streaming) return
+    e.preventDefault()
+    const next = Math.max(ICON_MIN, Math.min(ICON_MAX, iconSize + (e.deltaY < 0 ? 10 : -10)))
+    if (next === iconSize) return
+    iconSize = next
+    applyIconSize()
+    applyLayout()
+  }, { passive: false })
 
   window.addEventListener('mousemove', function (e) {
     if (streaming) return
@@ -350,6 +406,15 @@
   window.petBridge = {
     setState: setState,
 
+    /** 恢复持久化的桌宠尺寸（启动时由 Swift 调用）。 */
+    setIconSize: function (size) {
+      const s = Math.max(ICON_MIN, Math.min(ICON_MAX, Math.round(Number(size) || ICON_MIN)))
+      if (s === iconSize) return
+      iconSize = s
+      applyIconSize()
+      applyLayout()
+    },
+
     /** 载入 host 端持久化的会话记录（启动时由 Swift 调用）。 */
     loadHistory: function (turns) {
       if (streaming) return
@@ -372,6 +437,7 @@
       bubble.hidden = true
       transcript.innerHTML = ''
       refreshCloseButton()
+      applyLayout()
     },
 
     /** 回复增量（追加到当前流式回复，逐字渲染） */
@@ -429,6 +495,7 @@
       offlineTag.hidden = false
       inputBar.hidden = true
       hideBubble()
+      applyLayout()
     },
 
     /** 恢复在线 */
@@ -436,6 +503,7 @@
       setState('idle')
       offlineTag.hidden = true
       if (conversation.length > 0) showTranscript()
+      else applyLayout()
     },
 
     /** 调试：注入一条长回复（--snapshot 模式验证气泡布局用） */
@@ -467,7 +535,9 @@
     },
   }
 
-  /* 初始化渲染栈（失败自动回落纯文本），初次上屏动画：先待机 */
+  /* 初始化渲染栈（失败自动回落纯文本），应用尺寸并切到紧凑布局，先待机 */
   initMarked()
+  applyIconSize()
+  applyLayout()
   setState('idle')
 })()

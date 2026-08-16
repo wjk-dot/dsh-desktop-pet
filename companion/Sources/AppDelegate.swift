@@ -34,6 +34,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         host.start()
 
+        // 恢复持久化的桌宠尺寸（页面加载后注入）
+        let savedIconSize = UserDefaults.standard.double(forKey: "petIconSize")
+        if savedIconSize > 0 {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+                self?.window?.webView.eval("window.petBridge && window.petBridge.setIconSize(\(savedIconSize))")
+            }
+        }
+
         // 调试模式：--snapshot <path> —— 注入一条长回复并导出渲染快照后退出
         let args = CommandLine.arguments
         if let i = args.firstIndex(of: "--snapshot"), args.count > i + 1 {

@@ -102,6 +102,17 @@ final class PetWebView: WKWebView, WKScriptMessageHandler, WKNavigationDelegate 
             host.sendChat(text)
         case "drag":
             (window as? PetWindow)?.beginDrag()
+        case "layout":
+            let mode = body["mode"] as? String ?? "compact"
+            let width = body["width"] as? Double ?? 0
+            let height = body["height"] as? Double ?? 0
+            let size = body["size"] as? Double ?? 0
+            (window as? PetWindow)?.applyLayout(
+                mode: mode,
+                width: CGFloat(width),
+                height: CGFloat(height),
+                iconSize: CGFloat(size)
+            )
         default:
             break
         }

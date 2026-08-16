@@ -49,6 +49,31 @@ final class PetWindow: NSWindow {
         webView.eval("window.petBridge && window.petBridge.clearTranscript()")
     }
 
+    // MARK: - 动态窗口尺寸（JS 布局消息驱动）
+
+    /// 图标尺寸持久化键。
+    private static let iconSizeKey = "petIconSize"
+
+    /// 按 JS 布局消息调整窗口：底边锚定不动（桌宠原地），宽度/高度自适应。
+    func applyLayout(mode: String, width: CGFloat, height: CGFloat, iconSize: CGFloat) {
+        guard width > 40, height > 40 else { return }
+        if iconSize > 0 {
+            UserDefaults.standard.set(Double(iconSize), forKey: PetWindow.iconSizeKey)
+        }
+        let target = NSRect(
+            x: frame.midX - width / 2,
+            y: frame.minY,
+            width: width,
+            height: height
+        )
+        guard target != frame else { return }
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.18
+            context.allowsImplicitAnimation = true
+            animator().setFrame(target, display: true)
+        }
+    }
+
     // MARK: - 拖动（JS 判定拖动手势后调用）
 
     func beginDrag() {
