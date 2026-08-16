@@ -74,9 +74,28 @@ final class PetWindow: NSWindow {
     /// 桌宠开关（DSH 界面悬浮开关控制）：关闭隐藏窗口，开启恢复显示。
     func setPetEnabled(_ enabled: Bool) {
         if enabled {
+            clampToVisible()
             if !isVisible { orderFrontRegardless() }
         } else if isVisible {
             orderOut(nil)
+        }
+    }
+
+    /// 把窗口拉回可见区域（布局/拖动/恢复位置都可能把窗口推出屏幕，
+    /// 导致"只看到气泡看不到鲸鱼"这类问题）。贴边状态是刻意部分离屏，跳过。
+    func clampToVisible() {
+        guard dockEdge == nil, let screen = screenContaining() else { return }
+        let vf = screen.visibleFrame
+        var r = frame
+        if r.width <= vf.width && r.height <= vf.height {
+            r.origin.x = min(max(r.minX, vf.minX), vf.maxX - r.width)
+            r.origin.y = min(max(r.minY, vf.minY), vf.maxY - r.height)
+        } else {
+            r.origin.x = max(r.minX, vf.minX)
+            r.origin.y = min(max(r.minY, vf.minY), vf.maxY - r.height)
+        }
+        if r != frame {
+            setFrame(r, display: true)
         }
     }
 
@@ -109,6 +128,8 @@ final class PetWindow: NSWindow {
             case .bottom: r.origin.y = screen.frame.minY - r.height + dockPeek
             }
             animate(to: r, duration: 0.18)
+        } else {
+            clampToVisible()
         }
     }
 
@@ -292,14 +313,16 @@ final class PetWindow: NSWindow {
     private static func restoreOrigin() -> NSPoint {
         if let stored = UserDefaults.standard.string(forKey: "petWindowFrame") {
             let rect = NSRectFromString(stored)
-            if let screen = NSScreen.main {
+            // 保存的位置必须落在某个屏幕的可见区内，否则回默认角落
+            // （历史坏位置会把窗口推到屏幕外，只露出气泡一角）。
+            if let screen = NSScreen.screens.first(where: { $0.visibleFrame.intersects(rect) }) {
                 let vf = screen.visibleFrame
                 var p = rect.origin
                 p.x = min(max(p.x, vf.minX), vf.maxX - rect.width)
                 p.y = min(max(p.y, vf.minY), vf.maxY - rect.height)
                 return p
             }
-            return rect.origin
+            // 不在任何屏幕内 → 落到默认角落
         }
         // 默认：主屏右下角
         if let screen = NSScreen.main {
