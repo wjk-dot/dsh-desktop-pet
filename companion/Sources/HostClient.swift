@@ -130,10 +130,28 @@ final class HostClient: NSObject, URLSessionDataDelegate {
         onEval?(script)
     }
 
+    /// 把 Swift 字符串转成合法的 JS 字符串字面量（JSON 转义）。
+    /// 不依赖 NSJSONSerialization：裸字符串顶层序列化会抛 ObjC 异常（SIGABRT），
+    /// 手写转义器根除该类崩溃。
     private static func jsString(_ s: String) -> String {
-        guard let data = try? JSONSerialization.data(withJSONObject: s),
-              let str = String(data: data, encoding: .utf8) else { return "\"\"" }
-        return str
+        var out = "\""
+        for scalar in s.unicodeScalars {
+            switch scalar {
+            case "\\": out += "\\\\"
+            case "\"": out += "\\\""
+            case "\n": out += "\\n"
+            case "\r": out += "\\r"
+            case "\t": out += "\\t"
+            case "\u{08}": out += "\\b"
+            case "\u{0C}": out += "\\f"
+            case let c where c.value < 0x20 || c.value == 0x2028 || c.value == 0x2029:
+                out += String(format: "\\u%04x", c.value)
+            default:
+                out.unicodeScalars.append(scalar)
+            }
+        }
+        out += "\""
+        return out
     }
 
     // MARK: - URLSessionDataDelegate（SSE 流式）
