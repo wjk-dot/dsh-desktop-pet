@@ -1,0 +1,224 @@
+/* DeepSeek 桌宠页面样式：透明舞台 + 图标动画 + 气泡 + 输入框 */
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: default;
+  font-family: -apple-system, "PingFang SC", "Helvetica Neue", sans-serif;
+}
+
+.stage {
+  position: relative;
+  width: 280px;
+  height: 340px;
+  background: transparent;
+}
+
+/* ---------- 头顶气泡 ---------- */
+.bubble {
+  position: absolute;
+  top: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: 236px;
+  min-width: 60px;
+  background: rgba(255, 255, 255, 0.96);
+  border-radius: 16px;
+  padding: 10px 14px;
+  box-shadow: 0 4px 18px rgba(20, 60, 120, 0.18);
+  animation: bubbleIn 0.25s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+
+.bubble-text {
+  font-size: 13px;
+  line-height: 1.55;
+  color: #1a2b4d;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+.bubble-text .caret {
+  display: inline-block;
+  width: 2px;
+  height: 13px;
+  background: #4d6bfe;
+  vertical-align: -2px;
+  margin-left: 2px;
+  animation: caretBlink 0.8s steps(1) infinite;
+}
+
+.bubble-arrow {
+  position: absolute;
+  bottom: -8px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 0;
+  height: 0;
+  border-left: 8px solid transparent;
+  border-right: 8px solid transparent;
+  border-top: 9px solid rgba(255, 255, 255, 0.96);
+  filter: drop-shadow(0 2px 2px rgba(20, 60, 120, 0.12));
+}
+
+/* ---------- 桌宠主体 ---------- */
+.pet {
+  position: absolute;
+  bottom: 46px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 150px;
+  height: 150px;
+  cursor: grab;
+  animation: petFloat 3.2s ease-in-out infinite;
+  -webkit-user-drag: none;
+}
+
+.pet:active { cursor: grabbing; }
+
+.pet-inner {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#petIcon {
+  width: 132px;
+  height: 132px;
+  border-radius: 28px;
+  box-shadow: 0 10px 30px rgba(30, 80, 180, 0.28);
+  -webkit-user-drag: none;
+  pointer-events: none;
+}
+
+/* 思考光晕 */
+.glow {
+  position: absolute;
+  inset: -14px;
+  border-radius: 40px;
+  background: radial-gradient(circle, rgba(77, 107, 254, 0.45) 0%, rgba(77, 172, 255, 0.15) 55%, transparent 75%);
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* ---------- 输入框 ---------- */
+.input-bar {
+  position: absolute;
+  bottom: 8px;
+  left: 12px;
+  right: 12px;
+  display: flex;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.96);
+  border-radius: 22px;
+  padding: 6px 8px;
+  box-shadow: 0 6px 20px rgba(20, 60, 120, 0.22);
+  animation: bubbleIn 0.22s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+
+.input-bar input {
+  flex: 1;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 13px;
+  color: #1a2b4d;
+  padding: 4px 6px;
+}
+
+.input-bar input::placeholder { color: #9aacc8; }
+
+.input-bar button {
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #4d6bfe, #4dacff);
+  color: #fff;
+  font-size: 14px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.input-bar button:active { transform: scale(0.92); }
+
+/* ---------- 离线提示 ---------- */
+.offline-tag {
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 11px;
+  color: #8a97ad;
+  background: rgba(255, 255, 255, 0.7);
+  padding: 4px 10px;
+  border-radius: 20px;
+  white-space: nowrap;
+}
+
+/* ---------- 状态动画 ---------- */
+
+/* 待机：漂浮 */
+@keyframes petFloat {
+  0%, 100% { transform: translateX(-50%) translateY(0); }
+  50% { transform: translateX(-50%) translateY(-9px); }
+}
+
+/* 聆听：轻微摇摆放大 */
+.stage.pet-listening .pet { animation: petListen 1.4s ease-in-out infinite; }
+@keyframes petListen {
+  0%, 100% { transform: translateX(-50%) translateY(0) rotate(0); }
+  25% { transform: translateX(-50%) translateY(-3px) rotate(-3deg); }
+  75% { transform: translateX(-50%) translateY(-3px) rotate(3deg); }
+}
+
+/* 思考：左右轻晃 + 光晕脉冲 */
+.stage.pet-thinking .pet { animation: petThink 0.9s ease-in-out infinite; }
+@keyframes petThink {
+  0%, 100% { transform: translateX(-50%) translateY(0) rotate(0); }
+  25% { transform: translateX(-50%) translateY(-2px) rotate(-5deg); }
+  75% { transform: translateX(-50%) translateY(-2px) rotate(5deg); }
+}
+.stage.pet-thinking .glow { opacity: 1; animation: glowPulse 0.9s ease-in-out infinite; }
+@keyframes glowPulse {
+  0%, 100% { opacity: 0.35; transform: scale(0.95); }
+  50% { opacity: 1; transform: scale(1.06); }
+}
+
+/* 说话：有节奏弹跳 + 气泡呼吸 */
+.stage.pet-speaking .pet { animation: petSpeak 0.5s ease-in-out infinite; }
+@keyframes petSpeak {
+  0%, 100% { transform: translateX(-50%) translateY(0) scale(1); }
+  50% { transform: translateX(-50%) translateY(-14px) scale(1.04); }
+}
+.stage.pet-speaking .bubble { animation: bubbleBreathe 0.5s ease-in-out infinite; }
+@keyframes bubbleBreathe {
+  0%, 100% { transform: translateX(-50%) scale(1); }
+  50% { transform: translateX(-50%) scale(1.03); }
+}
+
+/* 离线：灰阶 + 缓慢闪烁 */
+.stage.pet-offline .pet { animation: petOffline 2.4s ease-in-out infinite; }
+.stage.pet-offline #petIcon { filter: grayscale(1); opacity: 0.55; }
+@keyframes petOffline {
+  0%, 100% { transform: translateX(-50%) translateY(0); }
+  50% { transform: translateX(-50%) translateY(-4px); }
+}
+
+@keyframes bubbleIn {
+  from { opacity: 0; transform: translateX(-50%) translateY(8px) scale(0.9); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+}
+
+@keyframes caretBlink {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}

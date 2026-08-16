@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>DeepSeek 桌宠</title>
+<link rel="stylesheet" href="pet.css">
+</head>
+<body>
+<div class="stage" id="stage">
+  <!-- 头顶对话气泡 -->
+  <div class="bubble" id="bubble" hidden>
+    <div class="bubble-text" id="bubbleText"></div>
+    <div class="bubble-arrow"></div>
+  </div>
+
+  <!-- 桌宠主体：外层漂浮、内层摇摆 -->
+  <div class="pet" id="pet" title="DeepSeek 桌宠">
+    <div class="pet-inner">
+      <img id="petIcon" src="icon.png" alt="DeepSeek" draggable="false">
+      <div class="glow" id="glow"></div>
+    </div>
+  </div>
+
+  <!-- 点击弹出的输入框 -->
+  <div class="input-bar" id="inputBar" hidden>
+    <input id="inputText" type="text" maxlength="500" placeholder="和小鲸鱼说点什么…" autocomplete="off">
+    <button id="sendBtn" title="发送">➤</button>
+  </div>
+
+  <!-- 离线提示 -->
+  <div class="offline-tag" id="offlineTag" hidden>DeepSeek Harness 未运行</div>
+</div>
+<script src="pet.js"></script>
+</body>
+</html>

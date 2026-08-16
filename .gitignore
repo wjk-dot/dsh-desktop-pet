@@ -1,0 +1,16 @@
+# macOS
+.DS_Store
+
+# Swift / Xcode
+.build/
+build/
+DerivedData/
+*.xcodeproj/
+xcuserdata/
+
+# Node / pnpm
+node_modules/
+*.log
+
+# 本地运行痕迹
+*.tmp
