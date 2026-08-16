@@ -17,6 +17,7 @@
   },
   "files": [
     "src",
+    "toggle.js",
     "cordis.patch.yml",
     "README.md",
     "LICENSE"

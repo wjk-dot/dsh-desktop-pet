@@ -4,6 +4,7 @@
  * cordis.patch.yml 插入一行 { id: desktop-pet, name: '@linxin666/dsh-desktop-pet' }。
  */
 
+import { readFileSync } from 'node:fs'
 import { PetChatService } from './chat.js'
 import { writeBridgeFile } from './bridge.js'
 import { loadEnabled, saveEnabled } from './control.js'
@@ -16,52 +17,18 @@ export const name = 'desktop-pet'
 export const inject = ['webServer', 'llm', 'agentDefaultModel']
 
 /**
- * 注入到 DSH 界面右下角（避开聊天区）的桌宠开关：
- * 悬浮小按钮，点按切换 /api/pet/control；随 index.html 每次响应注入。
+ * 注入到 DSH 界面左下角的桌宠开关脚本（<script> 标签体，见 toggle.js）。
+ * 每次 index.html 响应时从磁盘读取——改 toggle.js 后只需刷新 DSH 页面（Cmd+R）
+ * 即可生效，无需重启应用/插件。
  */
-const TOGGLE_SCRIPT = `<script>
-(function () {
-  'use strict';
-  var KEY = 'dsh-desktop-pet-toggle';
-  var css = '#' + KEY + '{position:fixed;left:14px;bottom:14px;z-index:2147483000;' +
-    'display:flex;align-items:center;gap:6px;padding:7px 12px;border:none;border-radius:999px;' +
-    'font:600 12px/1 -apple-system,"PingFang SC",sans-serif;cursor:pointer;' +
-    'color:#fff;background:linear-gradient(135deg,#4d6bfe,#4dacff);' +
-    'box-shadow:0 4px 14px rgba(30,80,180,.35);transition:opacity .15s,filter .15s;} ' +
-    '#' + KEY + '.off{background:#8a97ad;opacity:.75;filter:saturate(.4);} ' +
-    '#' + KEY + ':hover{opacity:.92;}';
-  var style = document.createElement('style');
-  style.textContent = css;
-  document.head.appendChild(style);
-  var btn = document.createElement('button');
-  btn.id = KEY;
-  btn.title = '开启 / 关闭桌宠';
-  btn.type = 'button';
-  btn.textContent = '🐋';
-  document.body.appendChild(btn);
-
-  var on = true;
-  function paint() {
-    btn.classList.toggle('off', !on);
-    btn.textContent = on ? '🐋 桌宠开' : '🐋 桌宠关';
+function toggleScriptTag() {
+  try {
+    const body = readFileSync(new URL('../toggle.js', import.meta.url), 'utf8')
+    return `<script>\n${body}\n<\/script>`
+  } catch {
+    return ''
   }
-  function apply(d) {
-    if (d && typeof d.enabled === 'boolean') { on = d.enabled; paint(); }
-  }
-  function refresh() {
-    fetch('/api/pet/control', { cache: 'no-store' })
-      .then(function (r) { return r.json(); }).then(apply).catch(function () {});
-  }
-  btn.addEventListener('click', function () {
-    fetch('/api/pet/control', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ enabled: !on }),
-    }).then(function (r) { return r.json(); }).then(apply).catch(function () {});
-  });
-  refresh();
-})();
-<\/script>`
+}
 
 /**
  * @param {import('@deepseek-ai/cordis').Context} ctx
@@ -88,11 +55,13 @@ export function apply(ctx, config = {}) {
 
   // 往 DSH 界面 index.html 注入桌宠开关（插到 </body> 之前；随插件 fiber 自动卸载）。
   ctx.effect(
-    () => ctx.webServer.tapIndex((html) =>
-      html.includes('</body>')
-        ? html.replace('</body>', `${TOGGLE_SCRIPT}\n</body>`)
-        : html + TOGGLE_SCRIPT,
-    ),
+    () => ctx.webServer.tapIndex((html) => {
+      const tag = toggleScriptTag()
+      if (tag === '') return html
+      return html.includes('</body>')
+        ? html.replace('</body>', `${tag}\n</body>`)
+        : html + tag
+    }),
     'desktop-pet: gui-toggle',
   )
 

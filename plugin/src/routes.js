@@ -43,30 +43,14 @@ export function makePetRoutes({ service, writeBridge, loadEnabled, saveEnabled }
       kind: 'exact',
       path: '/api/pet/control',
       handler: (req, res) => {
-        if (!requireMethod(req, res, 'GET')) return
-        try {
-          json(res, 200, { ok: true, enabled: loadEnabled() })
-        } catch (error) {
-          json(res, 500, { ok: false, error: error instanceof Error ? error.message : String(error) })
+        if (req.method === 'GET') {
+          try {
+            json(res, 200, { ok: true, enabled: loadEnabled() })
+          } catch (error) {
+            json(res, 500, { ok: false, error: error instanceof Error ? error.message : String(error) })
+          }
+          return
         }
-      },
-    },
-    {
-      kind: 'exact',
-      path: '/api/pet/config',
-      handler: (req, res) => {
-        if (!requireMethod(req, res, 'GET')) return
-        try {
-          json(res, 200, { ok: true, config: service.configView() })
-        } catch (error) {
-          json(res, 500, { ok: false, error: error instanceof Error ? error.message : String(error) })
-        }
-      },
-    },
-    {
-      kind: 'exact',
-      path: '/api/pet/control',
-      handler: (req, res) => {
         if (!requireMethod(req, res, 'POST')) return
         readJsonBody(req).then(
           (body) => {
@@ -80,6 +64,18 @@ export function makePetRoutes({ service, writeBridge, loadEnabled, saveEnabled }
           },
           (error) => json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) }),
         )
+      },
+    },
+    {
+      kind: 'exact',
+      path: '/api/pet/config',
+      handler: (req, res) => {
+        if (!requireMethod(req, res, 'GET')) return
+        try {
+          json(res, 200, { ok: true, config: service.configView() })
+        } catch (error) {
+          json(res, 500, { ok: false, error: error instanceof Error ? error.message : String(error) })
+        }
       },
     },
     {

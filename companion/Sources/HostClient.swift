@@ -49,7 +49,7 @@ final class HostClient: NSObject, URLSessionDataDelegate {
 
     func start() {
         reloadBridge()
-        let timer = Timer(timeInterval: 5.0, repeats: true) { [weak self] _ in
+        let timer = Timer(timeInterval: 2.0, repeats: true) { [weak self] _ in
             self?.checkHealth()
         }
         RunLoop.main.add(timer, forMode: .common)
