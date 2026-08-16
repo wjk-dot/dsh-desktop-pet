@@ -32,7 +32,8 @@ html, body {
   position: absolute;
   /* 锚定在桌宠头顶上方：pet 顶边离底部 240px，气泡底边 256px（留 16px 空隙）。
      底边固定 → 高度随内容向上生长，永不向下盖住桌宠。
-     宽度由 JS 按内容测量（fitBubbleWidth）：单行短内容收缩、长内容展开到 344px。 */
+     宽度由 JS 按内容测量（fitBubbleWidth）：单行短内容收缩、长内容展开到 344px。
+     滚动发生在 .bubble-text（✕ 固定在头部不随内容滚动）。 */
   bottom: 256px;
   top: auto;
   left: 50%;
@@ -40,7 +41,6 @@ html, body {
   width: 160px;
   max-width: 344px;
   max-height: 292px;
-  overflow-y: auto;
   z-index: 2;
   background: rgba(255, 255, 255, 0.97);
   border-radius: 20px;
@@ -56,6 +56,9 @@ html, body {
   color: #1a2b4d;
   word-break: break-word;
   white-space: pre-wrap;
+  overflow-y: auto;
+  /* 滚动上限：气泡 max-height 292 - 上下 padding 28 - 头部 ✕ 预留 ~24 */
+  max-height: 240px;
 }
 
 .bubble-text .caret {
@@ -134,15 +137,16 @@ html, body {
 /* 气泡右上角关闭按钮 */
 .bubble-close {
   position: absolute;
-  top: 7px;
-  right: 7px;
-  width: 20px;
-  height: 20px;
+  top: 6px;
+  right: 6px;
+  width: 22px;
+  height: 22px;
   border: none;
   border-radius: 50%;
-  background: rgba(120, 140, 180, 0.16);
-  color: #6b7fa3;
-  font-size: 11px;
+  background: rgba(120, 140, 180, 0.30);
+  color: #40527a;
+  font-size: 13px;
+  font-weight: 600;
   line-height: 1;
   cursor: pointer;
   display: flex;
@@ -153,8 +157,8 @@ html, body {
 }
 
 .bubble-close:hover {
-  background: rgba(120, 140, 180, 0.32);
-  color: #2a3d63;
+  background: rgba(120, 140, 180, 0.55);
+  color: #1f2c4d;
 }
 
 .bubble-arrow {

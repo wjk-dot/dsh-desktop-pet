@@ -193,16 +193,23 @@
   /** 重渲染气泡（rAF 合并高频增量，限高后滚到底部）。 */
   function renderBubble(withCaret) {
     caretVisible = withCaret
-    // 流式中隐藏 ✕ 按钮，避免误解
-    bubbleClose.style.display = streaming ? 'none' : ''
+    refreshCloseButton()
     if (renderPending) return
     renderPending = true
     requestAnimationFrame(function () {
       renderPending = false
       bubbleText.innerHTML = renderRich(raw) + (caretVisible ? caretHtml : '')
       fitBubbleWidth()
-      bubble.scrollTop = bubble.scrollHeight
+      bubbleText.scrollTop = bubbleText.scrollHeight
     })
+  }
+
+  /**
+   * ✕ 按钮可见性：流式中隐藏，非流式且气泡可见时显示。
+   * 必须在 streaming 状态翻转后调用（如 renderDone），否则 ✕ 会停留在隐藏态。
+   */
+  function refreshCloseButton() {
+    bubbleClose.style.display = (!streaming && !bubble.hidden) ? '' : 'none'
   }
 
   /** 对话完成后定时自动收起气泡（可读内容的时间窗）。 */
@@ -335,6 +342,7 @@
     /** 回复结束：说完歇 1.6s 回待机，15s 后自动收起气泡 */
     renderDone: function () {
       streaming = false
+      refreshCloseButton()
       if (state === 'thinking') setState('speaking')
       setTimeout(function () {
         if (!streaming && state === 'speaking') setState('idle')
@@ -345,6 +353,7 @@
     /** 出错 */
     renderError: function (message) {
       streaming = false
+      refreshCloseButton()
       showBubble('😢 ' + (message || '出错了'), false)
       setTimeout(function () {
         if (!streaming) hideBubble()
@@ -386,6 +395,15 @@
     debugLongBubble: function (text) {
       showBubble(text || '长文本', false)
       setState('speaking')
+    },
+
+    /** 调试：模拟真实"流式→完成"路径（验证完成后 ✕ 显示） */
+    debugSimulateDone: function (text) {
+      streaming = true
+      showBubble('', true)
+      appendDelta(text || '')
+      // 与真实路径一致：由 Swift 调 window.petBridge.renderDone()
+      window.petBridge.renderDone()
     },
 
     /** 调试：把渲染后的纯文本写进 document.title（Swift 读 webView.title 取回） */

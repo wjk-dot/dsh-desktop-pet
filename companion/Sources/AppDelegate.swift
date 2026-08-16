@@ -63,15 +63,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // 裸字符串顶层序列化必须带 .fragmentsAllowed，否则抛 ObjC 异常
                 let data = try? JSONSerialization.data(withJSONObject: longText, options: [.fragmentsAllowed])
                 let json = data.flatMap { String(data: $0, encoding: .utf8) } ?? "\"\""
-                self?.window?.webView.eval("window.petBridge && window.petBridge.debugLongBubble(\(json))")
+                self?.window?.webView.eval("window.petBridge && window.petBridge.debugSimulateDone(\(json))")
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
-                // 渲染后取回气泡纯文本，验证渲染正确性（写进快照旁的 .txt）
-                self?.window?.webView.evalValue("document.getElementById('bubbleText').innerText") { value in
+                // 渲染后取回气泡纯文本 + ✕ 按钮状态（写进快照旁的 .txt）
+                self?.window?.webView.evalValue(
+                    "(function(){var c=document.getElementById('bubbleClose');var b=document.getElementById('bubble');" +
+                    "var r=c?c.getBoundingClientRect():null;var br=b.getBoundingClientRect();" +
+                    "return JSON.stringify({display:c?getComputedStyle(c).display:null," +
+                    "rect:r?[r.left,r.top,r.width,r.height]:null,bubbleHidden:b.hidden," +
+                    "bubbleRect:[br.left,br.top,br.width,br.height]," +
+                    "offsetH:b.offsetHeight,scrollH:b.scrollHeight,clientH:b.clientHeight," +
+                    "text:document.getElementById('bubbleText').innerText});})()"
+                ) { value in
                     let text = (value as? String) ?? ""
                     let txtPath = path + ".txt"
                     try? text.write(toFile: txtPath, atomically: true, encoding: .utf8)
-                    NSLog("pet: dump written to %@ (%d chars)", txtPath, text.count)
+                    NSLog("pet: state dump written to %@ (%d chars)", txtPath, text.count)
                 }
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in
