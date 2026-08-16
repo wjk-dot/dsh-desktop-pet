@@ -12,6 +12,7 @@
  */
 
 import { json, readJsonBody, requireMethod } from './util.js'
+import { launchCompanion } from './launch.js'
 
 /** SSE 单事件帧。 */
 function sse(res, data) {
@@ -25,7 +26,7 @@ function sse(res, data) {
  *          companionApp: string, launchCompanion: (appPath: string) => boolean}} deps
  * @returns {import('@deepseek-ai/dsh-host-webserver').WebRoute[]}
  */
-export function makePetRoutes({ service, writeBridge, loadEnabled, saveEnabled, companionApp, launchCompanion }) {
+export function makePetRoutes({ service, writeBridge, loadEnabled, saveEnabled, companionApp }) {
   return [
     {
       kind: 'exact',

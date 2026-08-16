@@ -5,12 +5,11 @@
  * cordis.patch.yml 插入一行 { id: desktop-pet, name: '@linxin666/dsh-desktop-pet' }。
  */
 
-import { spawn } from 'node:child_process'
-import { existsSync, readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
+import { readFileSync } from 'node:fs'
 import { PetChatService } from './chat.js'
 import { writeBridgeFile } from './bridge.js'
 import { loadEnabled, saveEnabled } from './control.js'
+import { defaultCompanionApp, launchCompanion } from './launch.js'
 import { makePetRoutes } from './routes.js'
 
 /** 稳定的 cordis 插件名（与 patch 插入行 id 对应）。 */
@@ -19,26 +18,7 @@ export const name = 'desktop-pet'
 /** 依赖服务：web 服务器（挂路由/注入开关）、LLM 通道、全局默认模型。 */
 export const inject = ['webServer', 'llm', 'agentDefaultModel', 'workspaceRegistry', 'apiProxy']
 
-/** 桌宠伴生应用默认路径：插件所在仓库的 companion/build/DeepSeekPet.app。 */
-function defaultCompanionApp() {
-  try {
-    const cand = new URL('../companion/build/DeepSeekPet.app', import.meta.url)
-    return existsSync(cand) ? fileURLToPath(cand) : ''
-  } catch {
-    return ''
-  }
-}
-
-/** 幂等拉起伴生应用（open 对已运行实例只是激活，不会重复启动）。 */
-export function launchCompanion(appPath) {
-  if (!appPath) return false
-  try {
-    spawn('open', [appPath], { stdio: 'ignore', detached: true }).unref()
-    return true
-  } catch {
-    return false
-  }
-}
+export { defaultCompanionApp, launchCompanion }
 
 /**
  * 注入到 DSH 界面左下角的桌宠开关脚本（<script> 标签体，见 toggle.js）。
@@ -65,6 +45,7 @@ export function apply(ctx, config = {}) {
   })
 
   const companionApp = config.companionApp ?? defaultCompanionApp()
+  ctx.logger.info(`desktop-pet: companionApp 解析结果 = ${companionApp ? companionApp : '(空)'}`)
 
   // 刷新端口桥：插件挂载时写一次（桥文件携带桌宠开关状态）。
   const writeBridge = () => writeBridgeFile(ctx.webServer.port)
@@ -74,6 +55,8 @@ export function apply(ctx, config = {}) {
   // （幂等；开关为关则保持不启动，等待界面开关打开时再拉起）。
   if (loadEnabled() && companionApp) {
     launchCompanion(companionApp)
+  } else {
+    ctx.logger.info(`desktop-pet: 未拉起伴生应用（enabled=${loadEnabled()}, companionApp=${companionApp ? '有' : '无'}）`)
   }
 
   // 注册路由，随插件 fiber 自动卸载。
