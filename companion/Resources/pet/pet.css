@@ -131,6 +131,32 @@ html, body {
 .bubble-text .katex-display { margin: 6px 0; overflow-x: auto; overflow-y: hidden; padding: 2px 0; }
 .bubble-text .katex { font-size: 1.1em; }
 
+/* 气泡右上角关闭按钮 */
+.bubble-close {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(120, 140, 180, 0.16);
+  color: #6b7fa3;
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 3;
+  padding: 0;
+}
+
+.bubble-close:hover {
+  background: rgba(120, 140, 180, 0.32);
+  color: #2a3d63;
+}
+
 .bubble-arrow {
   position: absolute;
   bottom: -8px;

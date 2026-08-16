@@ -12,6 +12,7 @@
   const stage = document.getElementById('stage')
   const bubble = document.getElementById('bubble')
   const bubbleText = document.getElementById('bubbleText')
+  const bubbleClose = document.getElementById('bubbleClose')
   const inputBar = document.getElementById('inputBar')
   const inputText = document.getElementById('inputText')
   const sendBtn = document.getElementById('sendBtn')
@@ -20,6 +21,7 @@
   let state = 'idle'        // idle | listening | thinking | speaking | offline
   let streaming = false     // 正在等待/接收回复
   let greetingShown = false
+  let autoHideTimer = null  // 对话完成后自动收起气泡的定时器
 
   /* ---------- 状态 ---------- */
   function setState(next) {
@@ -191,6 +193,8 @@
   /** 重渲染气泡（rAF 合并高频增量，限高后滚到底部）。 */
   function renderBubble(withCaret) {
     caretVisible = withCaret
+    // 流式中隐藏 ✕ 按钮，避免误解
+    bubbleClose.style.display = streaming ? 'none' : ''
     if (renderPending) return
     renderPending = true
     requestAnimationFrame(function () {
@@ -199,6 +203,14 @@
       fitBubbleWidth()
       bubble.scrollTop = bubble.scrollHeight
     })
+  }
+
+  /** 对话完成后定时自动收起气泡（可读内容的时间窗）。 */
+  function scheduleAutoHide(ms) {
+    if (autoHideTimer) clearTimeout(autoHideTimer)
+    autoHideTimer = setTimeout(function () {
+      if (!streaming) hideBubble()
+    }, ms)
   }
 
   function showBubble(text, withCaret) {
@@ -213,6 +225,10 @@
   }
 
   function hideBubble() {
+    if (autoHideTimer) {
+      clearTimeout(autoHideTimer)
+      autoHideTimer = null
+    }
     bubble.hidden = true
     bubbleText.textContent = ''
     raw = ''
@@ -236,6 +252,10 @@
   function send() {
     const text = inputText.value.trim()
     if (!text || streaming) return
+    if (autoHideTimer) {
+      clearTimeout(autoHideTimer)
+      autoHideTimer = null
+    }
     inputBar.hidden = true
     inputText.value = ''
     streaming = true
@@ -274,14 +294,25 @@
 
   window.addEventListener('mouseup', function () {
     if (!dragging && !moved && downX !== 0) {
-      // 单击：切换输入框
-      if (inputBar.hidden) openInput()
-      else closeInput()
+      // 单击：气泡开着（非流式）→ 先关气泡；否则切换输入框
+      if (!bubble.hidden && !streaming) {
+        hideBubble()
+      } else if (inputBar.hidden) {
+        openInput()
+      } else {
+        closeInput()
+      }
     }
     downX = 0
     downY = 0
     moved = false
     dragging = false
+  })
+
+  // 气泡右上角 ✕：显式关闭
+  bubbleClose.addEventListener('click', function (e) {
+    e.stopPropagation()
+    hideBubble()
   })
 
   sendBtn.addEventListener('click', send)
@@ -301,13 +332,13 @@
       appendDelta(text)
     },
 
-    /** 回复结束 */
+    /** 回复结束：说完歇 1.6s 回待机，15s 后自动收起气泡 */
     renderDone: function () {
       streaming = false
       if (state === 'thinking') setState('speaking')
-      // 说完歇 1.6s 回待机
       setTimeout(function () {
         if (!streaming && state === 'speaking') setState('idle')
+        scheduleAutoHide(15000)
       }, 1600)
     },
 
