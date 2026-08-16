@@ -415,19 +415,27 @@
       applyLayout()
     },
 
-    /** 载入 host 端持久化的会话记录（启动时由 Swift 调用）。 */
+    /** 载入 host 端持久化的会话记录（启动时由 Swift 调用，之后 2s 轮询刷新）。 */
     loadHistory: function (turns) {
       if (streaming) return
       if (!Array.isArray(turns)) return
-      conversation = turns
+      const next = turns
         .filter(function (t) {
           return t && (t.role === 'user' || t.role === 'assistant') && typeof t.content === 'string'
         })
         .map(function (t) {
           return { role: t.role, raw: t.content }
         })
+      const wasHidden = bubble.hidden
+      conversation = next
       lastEntryIndex = -1
-      if (conversation.length > 0) showTranscript()
+      // 只刷新数据，不强制弹出气泡——可见性由用户控制。
+      // （否则 2s 历史轮询会在用户关闭气泡后立刻把它重新弹出来，"关不掉"。）
+      if (!wasHidden && conversation.length > 0) {
+        renderAll()
+        fitBubbleWidth()
+        scrollTranscriptBottom()
+      }
     },
 
     /** 清空会话记录（托盘「清空对话记忆」时由 Swift 调用）。 */
@@ -502,8 +510,8 @@
     renderOnline: function () {
       setState('idle')
       offlineTag.hidden = true
-      if (conversation.length > 0) showTranscript()
-      else applyLayout()
+      // 不强制弹出气泡（可见性由用户控制）；布局保持当前模式
+      applyLayout()
     },
 
     /** 调试：注入一条长回复（--snapshot 模式验证气泡布局用） */
