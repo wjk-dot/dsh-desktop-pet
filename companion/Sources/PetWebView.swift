@@ -51,6 +51,32 @@ final class PetWebView: WKWebView, WKScriptMessageHandler, WKNavigationDelegate 
         }
     }
 
+    /// 调试：把当前渲染结果导出为 PNG（--snapshot 模式用，无需屏幕录制权限）。
+    func captureSnapshot(to path: String) {
+        let config = WKSnapshotConfiguration()
+        config.rect = bounds
+        takeSnapshot(with: config) { [weak self] image, error in
+            guard let image, error == nil else {
+                NSLog("pet: snapshot failed: %@", error?.localizedDescription ?? "unknown")
+                exit(1)
+            }
+            guard let tiff = image.tiffRepresentation,
+                  let rep = NSBitmapImageRep(data: tiff),
+                  let png = rep.representation(using: .png, properties: [:]) else {
+                NSLog("pet: snapshot encode failed")
+                exit(1)
+            }
+            do {
+                try png.write(to: URL(fileURLWithPath: path))
+                NSLog("pet: snapshot saved to %@", path)
+                exit(0)
+            } catch {
+                NSLog("pet: snapshot write failed: %@", error.localizedDescription)
+                exit(1)
+            }
+        }
+    }
+
     // MARK: - JS → Swift
 
     func userContentController(

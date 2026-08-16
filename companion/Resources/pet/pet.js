@@ -54,6 +54,8 @@
     const newCaret = document.createElement('span')
     newCaret.className = 'caret'
     bubbleText.appendChild(newCaret)
+    // 气泡限高后保持最新内容可见
+    bubble.scrollTop = bubble.scrollHeight
   }
 
   function hideBubble() {
@@ -191,6 +193,12 @@
       greetingShown = true
       showBubble('嗨！我是小鲸鱼，点我聊天～', false)
       setTimeout(hideBubble, 3200)
+    },
+
+    /** 调试：注入一条长回复（--snapshot 模式验证气泡布局用） */
+    debugLongBubble: function (text) {
+      showBubble(text || '长文本', false)
+      setState('speaking')
     },
   }
 

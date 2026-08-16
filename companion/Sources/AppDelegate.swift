@@ -35,6 +35,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
             self?.window?.greet()
         }
+
+        // 调试模式：--snapshot <path> —— 注入一条长回复并导出渲染快照后退出
+        let args = CommandLine.arguments
+        if let i = args.firstIndex(of: "--snapshot"), args.count > i + 1 {
+            let path = args[i + 1]
+            let longText = "你好呀！我是小鲸鱼，住在你的桌面角落～这条是用于验证气泡布局的长回复：如果气泡没有锚定在头顶上方，它就会像之前一样一路长下来盖住我。现在你应该看到气泡老老实实待在我头顶上，不管文本有多长都不会挡住我，超出部分会在气泡内部滚动显示。怎么样，这样的布局清爽多了吧？"
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+                // 裸字符串顶层序列化必须带 .fragmentsAllowed，否则抛 ObjC 异常
+                let data = try? JSONSerialization.data(withJSONObject: longText, options: [.fragmentsAllowed])
+                let json = data.flatMap { String(data: $0, encoding: .utf8) } ?? "\"\""
+                self?.window?.webView.eval("window.petBridge && window.petBridge.debugLongBubble(\(json))")
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in
+                self?.window?.webView.captureSnapshot(to: path)
+            }
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
