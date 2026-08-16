@@ -51,6 +51,18 @@ final class PetWebView: WKWebView, WKScriptMessageHandler, WKNavigationDelegate 
         }
     }
 
+    /// 执行一段返回值的 JS（主线程），结果经回调带回。
+    func evalValue(_ script: String, completion: @escaping (Any?) -> Void) {
+        evaluateJavaScript(script) { value, error in
+            if let error = error {
+                NSLog("pet: evalValue error: %@", error.localizedDescription)
+                completion(nil)
+                return
+            }
+            completion(value)
+        }
+    }
+
     /// 调试：把当前渲染结果导出为 PNG（--snapshot 模式用，无需屏幕录制权限）。
     func captureSnapshot(to path: String) {
         let config = WKSnapshotConfiguration()

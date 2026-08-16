@@ -34,33 +34,104 @@
     }
   }
 
-  /* ---------- 气泡打字机 ---------- */
-  function showBubble(text, withCaret) {
-    bubble.hidden = false
-    bubbleText.innerHTML = ''
-    bubbleText.appendChild(document.createTextNode(text || ''))
-    if (withCaret) {
-      const caret = document.createElement('span')
-      caret.className = 'caret'
-      bubbleText.appendChild(caret)
+  /* ---------- 富文本渲染（对齐 DSH 桌面端：Markdown + KaTeX + highlight.js） ---------- */
+
+  /** HTML 转义（兜底渲染）。 */
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+    })
+  }
+
+  /** 默认兜底渲染：纯文本转义。 */
+  let renderRich = function (text) {
+    return '<p>' + escapeHtml(text || '') + '</p>'
+  }
+
+  /**
+   * 初始化 marked + KaTeX + highlight.js + DOMPurify。
+   * 与桌面端同一渲染语义：GFM markdown、$..$/$$..$$ 公式（KaTeX）、代码高亮（hljs），
+   * 输出经 DOMPurify 消毒（LLM 输出视为不可信输入）。
+   * @returns {boolean} 是否初始化成功（失败时回落纯文本）。
+   */
+  function initMarked() {
+    try {
+      if (!window.marked || !window.katex || !window.DOMPurify) return false
+      const katexFactory = typeof window.markedKatex === 'function'
+        ? window.markedKatex
+        : (window.markedKatex && window.markedKatex.default)
+      if (typeof katexFactory !== 'function') return false
+      const katexExt = katexFactory({ throwOnError: false })
+
+      // 代码块高亮 renderer（marked v15：renderer 收单个 token 对象）
+      const renderer = new window.marked.Renderer()
+      renderer.code = function (token) {
+        const code = typeof token === 'object' && token !== null ? token.text : String(token)
+        const infostring = typeof token === 'object' && token !== null ? token.lang : arguments[1]
+        const lang = (infostring || '').split(/\s+/)[0]
+        let highlighted
+        try {
+          highlighted = lang && window.hljs.getLanguage(lang)
+            ? window.hljs.highlight(code, { language: lang }).value
+            : window.hljs.highlightAuto(code).value
+        } catch (e) {
+          highlighted = escapeHtml(code)
+        }
+        return '<pre><code class="hljs">' + highlighted + '</code></pre>'
+      }
+
+      window.marked.use({
+        gfm: true,
+        breaks: true,
+        renderer,
+        extensions: katexExt.extensions,
+      })
+
+      renderRich = function (text) {
+        const html = window.marked.parse(text || '')
+        return window.DOMPurify.sanitize(html, { ADD_ATTR: ['style'] })
+      }
+      return true
+    } catch (e) {
+      return false
     }
   }
 
+  /* ---------- 气泡打字机 ---------- */
+
+  let raw = ''              // 当前气泡的原始文本（Markdown 源）
+  const caretHtml = '<span class="caret"></span>'
+  let caretVisible = false
+  let renderPending = false
+
+  /** 重渲染气泡（rAF 合并高频增量，限高后滚到底部）。 */
+  function renderBubble(withCaret) {
+    caretVisible = withCaret
+    if (renderPending) return
+    renderPending = true
+    requestAnimationFrame(function () {
+      renderPending = false
+      bubbleText.innerHTML = renderRich(raw) + (caretVisible ? caretHtml : '')
+      bubble.scrollTop = bubble.scrollHeight
+    })
+  }
+
+  function showBubble(text, withCaret) {
+    raw = text || ''
+    bubble.hidden = false
+    renderBubble(withCaret)
+  }
+
   function appendDelta(text) {
-    // 去掉末尾光标再追加
-    const caret = bubbleText.querySelector('.caret')
-    if (caret) caret.remove()
-    bubbleText.appendChild(document.createTextNode(text))
-    const newCaret = document.createElement('span')
-    newCaret.className = 'caret'
-    bubbleText.appendChild(newCaret)
-    // 气泡限高后保持最新内容可见
-    bubble.scrollTop = bubble.scrollHeight
+    raw += text
+    renderBubble(true)
   }
 
   function hideBubble() {
     bubble.hidden = true
     bubbleText.textContent = ''
+    raw = ''
+    caretVisible = false
   }
 
   /* ---------- 输入框 ---------- */
@@ -200,8 +271,14 @@
       showBubble(text || '长文本', false)
       setState('speaking')
     },
+
+    /** 调试：把渲染后的纯文本写进 document.title（Swift 读 webView.title 取回） */
+    debugDump: function () {
+      document.title = 'PET_DUMP:' + (bubbleText.innerText || '').slice(0, 600)
+    },
   }
 
-  /* 初次上屏动画：先待机 */
+  /* 初始化渲染栈（失败自动回落纯文本），初次上屏动画：先待机 */
+  initMarked()
   setState('idle')
 })()

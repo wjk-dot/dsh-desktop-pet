@@ -14,7 +14,8 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/pet"
 cp .build/release/DeepSeekPet "$APP/Contents/MacOS/DeepSeekPet"
 cp Info.plist "$APP/Contents/Info.plist"
 cp Resources/icon.icns "$APP/Contents/Resources/icon.icns"
-cp Resources/pet/index.html Resources/pet/pet.css Resources/pet/pet.js Resources/pet/icon.png "$APP/Contents/Resources/pet/"
+# 宠物页面 + vendor（marked/katex/highlight/dompurify）整目录拷贝
+cp -R Resources/pet/. "$APP/Contents/Resources/pet/"
 
 echo "==> done: $APP"
 echo "运行：open $APP"

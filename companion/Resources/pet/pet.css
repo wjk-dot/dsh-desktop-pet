@@ -66,6 +66,69 @@ html, body {
   animation: caretBlink 0.8s steps(1) infinite;
 }
 
+/* ---------- 富文本内容（Markdown/KaTeX/highlight.js 渲染结果） ---------- */
+.bubble-text p { margin: 3px 0; }
+.bubble-text ul, .bubble-text ol { margin: 4px 0; padding-left: 18px; }
+.bubble-text h1, .bubble-text h2, .bubble-text h3,
+.bubble-text h4, .bubble-text h5, .bubble-text h6 {
+  font-size: 13px;
+  font-weight: 600;
+  margin: 6px 0 2px;
+  color: #12244a;
+}
+.bubble-text a { color: #4d6bfe; text-decoration: none; }
+.bubble-text strong { color: #12244a; }
+.bubble-text blockquote {
+  border-left: 3px solid #c9d6f0;
+  margin: 6px 0;
+  padding: 2px 8px;
+  color: #5a6b8c;
+  background: rgba(77, 107, 254, 0.04);
+  border-radius: 0 6px 6px 0;
+}
+.bubble-text table { border-collapse: collapse; margin: 6px 0; font-size: 11px; width: 100%; }
+.bubble-text th, .bubble-text td {
+  border: 1px solid #d8e0ee;
+  padding: 3px 6px;
+  text-align: left;
+}
+.bubble-text th { background: rgba(77, 107, 254, 0.06); }
+.bubble-text img { max-width: 100%; border-radius: 6px; }
+.bubble-text hr { border: none; border-top: 1px solid #d8e0ee; margin: 6px 0; }
+.bubble-text code {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 11px;
+}
+.bubble-text :not(pre) > code {
+  background: rgba(77, 107, 254, 0.09);
+  color: #3551c9;
+  border-radius: 4px;
+  padding: 1px 4px;
+}
+.bubble-text pre {
+  background: #1f2937;
+  color: #e5e7eb;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 11px;
+  line-height: 1.5;
+  overflow-x: auto;
+  margin: 6px 0;
+}
+.bubble-text pre code {
+  background: transparent;
+  color: inherit;
+  padding: 0;
+}
+.bubble-text .hljs-comment, .bubble-text .hljs-quote { color: #9ca3af; font-style: italic; }
+.bubble-text .hljs-keyword, .bubble-text .hljs-selector-tag, .bubble-text .hljs-literal { color: #93c5fd; }
+.bubble-text .hljs-string, .bubble-text .hljs-attr, .bubble-text .hljs-regexp { color: #a5d6a7; }
+.bubble-text .hljs-number, .bubble-text .hljs-symbol, .bubble-text .hljs-bullet { color: #fbc02d; }
+.bubble-text .hljs-title, .bubble-text .hljs-function, .bubble-text .hljs-section { color: #f8b4c8; }
+.bubble-text .hljs-built_in, .bubble-text .hljs-type { color: #c4b5fd; }
+.bubble-text .katex-display { margin: 6px 0; overflow-x: auto; overflow-y: hidden; padding: 2px 0; }
+.bubble-text .katex { font-size: 1.05em; }
+
 .bubble-arrow {
   position: absolute;
   bottom: -8px;

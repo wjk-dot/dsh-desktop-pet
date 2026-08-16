@@ -40,12 +40,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let args = CommandLine.arguments
         if let i = args.firstIndex(of: "--snapshot"), args.count > i + 1 {
             let path = args[i + 1]
-            let longText = "你好呀！我是小鲸鱼，住在你的桌面角落～这条是用于验证气泡布局的长回复：如果气泡没有锚定在头顶上方，它就会像之前一样一路长下来盖住我。现在你应该看到气泡老老实实待在我头顶上，不管文本有多长都不会挡住我，超出部分会在气泡内部滚动显示。怎么样，这样的布局清爽多了吧？"
+            let longText = """
+            你好！验证渲染栈对齐桌面端。
+
+            | 列A | 列B |
+            |---|---|
+            | 1 | 2 |
+
+            行内公式 $a^2 + b^2 = c^2$ 和 `inline code`、**加粗**。
+
+            ```python
+            def hello(name):
+                print(f"hi, {name}")
+            ```
+
+            块级公式：
+            $$E = mc^2$$
+            """
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
                 // 裸字符串顶层序列化必须带 .fragmentsAllowed，否则抛 ObjC 异常
                 let data = try? JSONSerialization.data(withJSONObject: longText, options: [.fragmentsAllowed])
                 let json = data.flatMap { String(data: $0, encoding: .utf8) } ?? "\"\""
                 self?.window?.webView.eval("window.petBridge && window.petBridge.debugLongBubble(\(json))")
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
+                // 渲染后取回气泡纯文本，验证渲染正确性（写进快照旁的 .txt）
+                self?.window?.webView.evalValue("document.getElementById('bubbleText').innerText") { value in
+                    let text = (value as? String) ?? ""
+                    let txtPath = path + ".txt"
+                    try? text.write(toFile: txtPath, atomically: true, encoding: .utf8)
+                    NSLog("pet: dump written to %@ (%d chars)", txtPath, text.count)
+                }
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in
                 self?.window?.webView.captureSnapshot(to: path)
