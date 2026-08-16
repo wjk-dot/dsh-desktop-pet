@@ -7,6 +7,12 @@ final class HostClient: NSObject, URLSessionDataDelegate {
     var onEval: ((String) -> Void)?
     /// 连接状态变化（主线程回调）。
     var onConnectionChange: ((Bool) -> Void)?
+    /// 桌宠开关变化（主线程回调；DSH 界面开关控制）。
+    var onEnabledChange: ((Bool) -> Void)?
+
+    /// 当前桌宠是否启用（来自桥文件；关闭时禁止对话）。
+    private(set) var isEnabled = true
+    private var lastEnabled: Bool?
 
     private let homeDir: URL
     private var baseURL: URL?
@@ -62,7 +68,7 @@ final class HostClient: NSObject, URLSessionDataDelegate {
         homeDir.appendingPathComponent("pet-bridge.json")
     }
 
-    /// 重新读取桥文件（端口每次启动可能变化）。
+    /// 重新读取桥文件（端口每次启动可能变化；enabled 变化时通知壳隐藏/显示）。
     func reloadBridge() {
         guard let data = try? Data(contentsOf: bridgeFileURL()),
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -71,6 +77,13 @@ final class HostClient: NSObject, URLSessionDataDelegate {
             return
         }
         baseURL = URL(string: "http://127.0.0.1:\(port)")
+        if let enabled = obj["enabled"] as? Bool {
+            isEnabled = enabled
+            if enabled != lastEnabled {
+                lastEnabled = enabled
+                DispatchQueue.main.async { self.onEnabledChange?(enabled) }
+            }
+        }
     }
 
     // MARK: - 健康轮询
@@ -99,6 +112,10 @@ final class HostClient: NSObject, URLSessionDataDelegate {
 
     func sendChat(_ text: String) {
         guard !chatInFlight else { return }
+        guard isEnabled else {
+            evalJS("window.petBridge && window.petBridge.renderError(\"\\u684c\\u5ba0\\u5df2\\u5173\\u95ed\")") // 桌宠已关闭
+            return
+        }
         guard let base = baseURL else {
             evalJS("window.petBridge && window.petBridge.renderError(\"\\u0044\\u0053\\u0048 \\u672a\\u8fd0\\u884c\")")
             return

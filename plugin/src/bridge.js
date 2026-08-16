@@ -1,11 +1,13 @@
 /**
  * 端口发现桥：把 host 的监听端口写入 $DSH_HOME/pet-bridge.json，
  * 伴生应用（Swift 桌宠窗口）读取该文件即可找到对话端点，无需知道固定端口。
+ * 桥文件同时携带桌宠开关（enabled），伴生应用据此隐藏/显示自己。
  */
 
 import { readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { dshHome } from './dsh-home.js'
+import { loadEnabled } from './control.js'
 
 /** 桥文件名。 */
 export const BRIDGE_FILE = 'pet-bridge.json'
@@ -42,6 +44,7 @@ export function writeBridgeFile(port, dir = dshHome()) {
     version: packageVersion(),
     startedAt: Date.now(),
     home: dir,
+    enabled: loadEnabled(dir),
   }
   const file = bridgeFilePath(dir)
   const tmp = `${file}.tmp`
@@ -53,7 +56,7 @@ export function writeBridgeFile(port, dir = dshHome()) {
 /**
  * 读取桥文件（不存在或损坏返回 null）。
  * @param {string} [dir] DSH home。
- * @returns {{port: number, pid?: number, version?: string, startedAt?: number}|null}
+ * @returns {{port: number, pid?: number, version?: string, startedAt?: number, enabled?: boolean}|null}
  */
 export function readBridgeFile(dir = dshHome()) {
   try {

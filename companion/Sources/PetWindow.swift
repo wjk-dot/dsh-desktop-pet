@@ -71,6 +71,15 @@ final class PetWindow: NSWindow {
         webView.eval("window.petBridge && window.petBridge.clearTranscript()")
     }
 
+    /// 桌宠开关（DSH 界面悬浮开关控制）：关闭隐藏窗口，开启恢复显示。
+    func setPetEnabled(_ enabled: Bool) {
+        if enabled {
+            if !isVisible { orderFrontRegardless() }
+        } else if isVisible {
+            orderOut(nil)
+        }
+    }
+
     // MARK: - 动态窗口尺寸（JS 布局消息驱动）
 
     /// 图标尺寸持久化键。

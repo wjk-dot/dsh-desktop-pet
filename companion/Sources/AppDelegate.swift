@@ -5,6 +5,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var window: PetWindow?
     private var host: HostClient?
     private var tray: NSStatusItem?
+    private var toggleMenuItem: NSMenuItem?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let host = HostClient()
@@ -27,9 +28,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         host.onConnectionChange = { [weak self] online in
             DispatchQueue.main.async {
                 self?.window?.notifyConnection(online)
-                if online {
+                if online, self?.host?.isEnabled ?? false {
                     self?.host?.fetchHistory()
                 }
+            }
+        }
+
+        // 桌宠开关（DSH 界面悬浮开关）→ 隐藏/显示窗口 + 托盘状态
+        host.onEnabledChange = { [weak self] enabled in
+            DispatchQueue.main.async {
+                self?.window?.setPetEnabled(enabled)
+                self?.updateTray(enabled: enabled)
             }
         }
         host.start()
@@ -117,11 +126,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             )
         }
         let menu = NSMenu()
-        menu.addItem(NSMenuItem(
+        let toggleItem = NSMenuItem(
             title: "显示 / 隐藏桌宠",
             action: #selector(toggleWindow),
             keyEquivalent: ""
-        ))
+        )
+        menu.addItem(toggleItem)
+        self.toggleMenuItem = toggleItem
         menu.addItem(NSMenuItem(
             title: "清空对话记忆",
             action: #selector(clearMemory),
@@ -144,6 +155,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } else {
             window.orderFrontRegardless()
         }
+    }
+
+    /// 桌宠开关状态 → 托盘第一项文案/可用性。
+    private func updateTray(enabled: Bool) {
+        toggleMenuItem?.title = enabled ? "显示 / 隐藏桌宠" : "桌宠已关闭（在 DSH 界面开启）"
+        toggleMenuItem?.isEnabled = enabled
     }
 
     @objc private func clearMemory() {
