@@ -22,35 +22,35 @@ html, body {
 
 .stage {
   position: relative;
-  width: 280px;
-  height: 340px;
+  width: 320px;
+  height: 440px;
   background: transparent;
 }
 
 /* ---------- 头顶气泡 ---------- */
 .bubble {
   position: absolute;
-  /* 锚定在桌宠头顶上方：pet 顶边在 196px 处，气泡底边 206px（留 10px 空隙）。
+  /* 锚定在桌宠头顶上方：pet 顶边在 220px 处，气泡底边 232px（留 12px 空隙）。
      底边固定 → 文本变长时气泡向上生长，永不向下盖住桌宠。 */
-  bottom: 206px;
+  bottom: 232px;
   top: auto;
   left: 50%;
   transform: translateX(-50%);
-  max-width: 236px;
-  min-width: 60px;
-  max-height: 124px;
+  max-width: 288px;
+  min-width: 80px;
+  max-height: 216px;
   overflow-y: auto;
   z-index: 2;
-  background: rgba(255, 255, 255, 0.96);
-  border-radius: 16px;
-  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.97);
+  border-radius: 18px;
+  padding: 12px 16px;
   box-shadow: 0 4px 18px rgba(20, 60, 120, 0.18);
   animation: bubbleIn 0.25s cubic-bezier(0.2, 0.9, 0.3, 1.2);
 }
 
 .bubble-text {
-  font-size: 13px;
-  line-height: 1.55;
+  font-size: 14px;
+  line-height: 1.65;
   color: #1a2b4d;
   word-break: break-word;
   white-space: pre-wrap;
@@ -97,7 +97,7 @@ html, body {
 .bubble-text hr { border: none; border-top: 1px solid #d8e0ee; margin: 6px 0; }
 .bubble-text code {
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  font-size: 11px;
+  font-size: 12px;
 }
 .bubble-text :not(pre) > code {
   background: rgba(77, 107, 254, 0.09);
@@ -109,9 +109,9 @@ html, body {
   background: #1f2937;
   color: #e5e7eb;
   border-radius: 8px;
-  padding: 8px 10px;
-  font-size: 11px;
-  line-height: 1.5;
+  padding: 10px 12px;
+  font-size: 12px;
+  line-height: 1.6;
   overflow-x: auto;
   margin: 6px 0;
 }
@@ -127,7 +127,7 @@ html, body {
 .bubble-text .hljs-title, .bubble-text .hljs-function, .bubble-text .hljs-section { color: #f8b4c8; }
 .bubble-text .hljs-built_in, .bubble-text .hljs-type { color: #c4b5fd; }
 .bubble-text .katex-display { margin: 6px 0; overflow-x: auto; overflow-y: hidden; padding: 2px 0; }
-.bubble-text .katex { font-size: 1.05em; }
+.bubble-text .katex { font-size: 1.1em; }
 
 .bubble-arrow {
   position: absolute;
@@ -145,11 +145,11 @@ html, body {
 /* ---------- 桌宠主体 ---------- */
 .pet {
   position: absolute;
-  bottom: 46px;
+  bottom: 60px;
   left: 50%;
   transform: translateX(-50%);
-  width: 150px;
-  height: 150px;
+  width: 160px;
+  height: 160px;
   cursor: grab;
   z-index: 1;
   animation: petFloat 3.2s ease-in-out infinite;
@@ -168,8 +168,8 @@ html, body {
 }
 
 #petIcon {
-  width: 132px;
-  height: 132px;
+  width: 140px;
+  height: 140px;
   border-radius: 28px;
   box-shadow: 0 10px 30px rgba(30, 80, 180, 0.28);
   -webkit-user-drag: none;
@@ -189,14 +189,14 @@ html, body {
 /* ---------- 输入框 ---------- */
 .input-bar {
   position: absolute;
-  bottom: 8px;
-  left: 12px;
-  right: 12px;
+  bottom: 10px;
+  left: 14px;
+  right: 14px;
   display: flex;
   gap: 6px;
-  background: rgba(255, 255, 255, 0.96);
-  border-radius: 22px;
-  padding: 6px 8px;
+  background: rgba(255, 255, 255, 0.97);
+  border-radius: 24px;
+  padding: 7px 10px;
   box-shadow: 0 6px 20px rgba(20, 60, 120, 0.22);
   z-index: 3;
   animation: bubbleIn 0.22s cubic-bezier(0.2, 0.9, 0.3, 1.2);
@@ -207,7 +207,7 @@ html, body {
   border: none;
   outline: none;
   background: transparent;
-  font-size: 13px;
+  font-size: 14px;
   color: #1a2b4d;
   padding: 4px 6px;
 }

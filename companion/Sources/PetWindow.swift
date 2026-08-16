@@ -2,7 +2,7 @@ import AppKit
 
 /// 桌宠悬浮窗：透明、无边框、永远置顶；可拖动，位置持久化。
 final class PetWindow: NSWindow {
-    static let windowSize = NSSize(width: 280, height: 340)
+    static let windowSize = NSSize(width: 320, height: 440)
 
     let webView: PetWebView
     private var dragMonitor: Any?

@@ -9,12 +9,11 @@ trap 'rm -rf "$TMP"' EXIT
 cd "$TMP"
 
 npm install --cache "$TMP/.npmcache" \
-  marked marked-katex-extension katex @highlightjs/cdn-assets dompurify
+  marked katex @highlightjs/cdn-assets dompurify
 
 V="$(cd .. && pwd)/Resources/pet/vendor"
 mkdir -p "$V/fonts"
 cp node_modules/marked/lib/marked.umd.js "$V/marked.umd.js"
-cp node_modules/marked-katex-extension/lib/index.umd.js "$V/marked-katex-extension.umd.js"
 cp node_modules/katex/dist/katex.min.js "$V/katex.min.js"
 cp node_modules/katex/dist/katex.min.css "$V/katex.min.css"
 cp node_modules/katex/dist/fonts/*.woff "$V/fonts/" 2>/dev/null || true

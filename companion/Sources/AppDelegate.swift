@@ -47,7 +47,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             |---|---|
             | 1 | 2 |
 
-            行内公式 $a^2 + b^2 = c^2$ 和 `inline code`、**加粗**。
+            行内公式 \\(a^2 + b^2 = c^2\\) 和 $x^2$、`inline code`、**加粗**。
+
+            欧拉公式 \\(e^{i\\theta} = \\cos\\theta + i\\sin\\theta\\)，复数的极坐标表示 \\(z = r(\\cos\\theta + i\\sin\\theta)\\)。
 
             ```python
             def hello(name):
@@ -55,7 +57,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             ```
 
             块级公式：
-            $$E = mc^2$$
+            \\[E = mc^2\\]
             """
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
                 // 裸字符串顶层序列化必须带 .fragmentsAllowed，否则抛 ObjC 异常

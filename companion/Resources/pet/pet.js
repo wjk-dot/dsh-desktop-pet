@@ -50,18 +50,13 @@
 
   /**
    * 初始化 marked + KaTeX + highlight.js + DOMPurify。
-   * 与桌面端同一渲染语义：GFM markdown、$..$/$$..$$ 公式（KaTeX）、代码高亮（hljs），
-   * 输出经 DOMPurify 消毒（LLM 输出视为不可信输入）。
+   * 数学公式由本文件自行提取（支持 $$..$$、$..$、\[..\]、\(..\) 四种分隔符，
+   * 兼容中文紧贴场景），直接交给 KaTeX 渲染，再以占位符过 markdown 管线。
    * @returns {boolean} 是否初始化成功（失败时回落纯文本）。
    */
   function initMarked() {
     try {
       if (!window.marked || !window.katex || !window.DOMPurify) return false
-      const katexFactory = typeof window.markedKatex === 'function'
-        ? window.markedKatex
-        : (window.markedKatex && window.markedKatex.default)
-      if (typeof katexFactory !== 'function') return false
-      const katexExt = katexFactory({ throwOnError: false })
 
       // 代码块高亮 renderer（marked v15：renderer 收单个 token 对象）
       const renderer = new window.marked.Renderer()
@@ -80,21 +75,80 @@
         return '<pre><code class="hljs">' + highlighted + '</code></pre>'
       }
 
-      window.marked.use({
-        gfm: true,
-        breaks: true,
-        renderer,
-        extensions: katexExt.extensions,
-      })
+      window.marked.use({ gfm: true, breaks: true, renderer })
 
       renderRich = function (text) {
-        const html = window.marked.parse(text || '')
+        const extracted = extractMath(text || '')
+        let html = window.marked.parse(extracted.text)
+        // 把公式占位符替换回 KaTeX HTML（先于 DOMPurify，让消毒一并处理）
+        html = html.replace(/@PETM(\d+)@/g, function (_, i) {
+          const p = extracted.parts[Number(i)]
+          return p ? p.html : ''
+        })
         return window.DOMPurify.sanitize(html, { ADD_ATTR: ['style'] })
       }
       return true
     } catch (e) {
       return false
     }
+  }
+
+  /**
+   * 渲染一段公式为 KaTeX HTML。
+   * @param {string} content 公式源码。
+   * @param {boolean} display 是否块级（displayMode）。
+   * @returns {string}
+   */
+  function renderMath(content, display) {
+    try {
+      return window.katex.renderToString(content, { throwOnError: false, displayMode: !!display })
+    } catch (e) {
+      return '<span style="color:#c62828">' + escapeHtml(content) + '</span>'
+    }
+  }
+
+  /**
+   * 保护代码块（``` ... ```），避免其中的 $ 或 \( 被当作公式。
+   * @param {string} text
+   * @returns {{text: string, blocks: string[]}}
+   */
+  function protectCodeBlocks(text) {
+    const blocks = []
+    const t = String(text).replace(/```[\s\S]*?(?:```|$)/g, function (m) {
+      blocks.push(m)
+      return '\u0001' + (blocks.length - 1) + '\u0001'
+    })
+    return { text: t, blocks: blocks }
+  }
+
+  /** 恢复代码块占位符。 */
+  function restoreCodeBlocks(text, blocks) {
+    return text.replace(/\u0001(\d+)\u0001/g, function (_, i) {
+      return blocks[Number(i)]
+    })
+  }
+
+  /**
+   * 提取全部公式（$$..$$ → \[..\] → $..$ → \(..\)），换成占位符。
+   * @param {string} text
+   * @returns {{text: string, parts: Array<{html: string}>}}
+   */
+  function extractMath(text) {
+    const parts = []
+    const p = protectCodeBlocks(text)
+    let t = p.text
+    const step = function (source, re, display) {
+      return source.replace(re, function (_, content) {
+        parts.push({ html: renderMath(content, display) })
+        return '@PETM' + (parts.length - 1) + '@'
+      })
+    }
+    // 顺序：块级优先于行内，避免 $$ 被 $ 规则吃掉
+    t = step(t, /\$\$([\s\S]*?)\$\$/g, true)
+    t = step(t, /\\\[([\s\S]*?)\\\]/g, true)
+    t = step(t, /\$([\s\S]*?)\$/g, false)
+    t = step(t, /\\\(([\s\S]*?)\\\)/g, false)
+    return { text: restoreCodeBlocks(t, p.blocks), parts: parts }
   }
 
   /* ---------- 气泡打字机 ---------- */
