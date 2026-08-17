@@ -1,6 +1,6 @@
 # dsh-desktop-pet
 
-> DeepSeek 桌宠对话插件：一只住在你屏幕上的鲸鱼小助手。无需打开 DeepSeek Harness 聊天界面，点击桌宠即可与 DeepSeek 对话，回复以头顶气泡流式呈现。
+> DeepSeek Harness 的紧凑 Agent 投影：桌宠与 Harness 左侧的 `桌宠对话` 使用同一条原生 session，可在两端继续同一条执行链。
 
 ## 功能
 
@@ -8,8 +8,10 @@
 - 💬 **点击即聊**：点桌宠弹出输入框，回车发送；DeepSeek 的回答逐字出现在头顶气泡中（打字机效果）。
 - 📐 **桌面端同款渲染**：气泡用与 DSH 桌面端对齐的渲染栈（Markdown + KaTeX 公式 + highlight.js 代码高亮 + DOMPurify 消毒）——公式、代码块、表格、加粗都正常显示，不再是原始标记。
 - 🪟 **原生悬浮窗口**：Swift + WKWebView 实现，透明、无边框、永远置顶、可拖动、位置记忆；DSH 主窗口关闭（托盘常驻）时桌宠依然在线。
-- ⚡ **轻量对话通道**：走官方 `ctx.llm.stream()`，不经过完整 agent 循环——快、省、纯聊天。
-- 🧠 **滚动记忆**：默认保留最近 12 轮，持久化 `$DSH_HOME/pet-chat.json`；托盘可一键清空。
+- 🤖 **完整 Agent 执行链**：通过官方 `apiProxy.sessions` 驱动原生 session，桌宠任务与桌面端共享工具调用、工作区、取消和会话历史。
+- 🔁 **双端连续会话**：桌宠启动后在当前工作区创建或恢复固定的 `桌宠对话` session；左侧工作区栏中可以直接打开、继续和审计它。
+- ⚡ **事件驱动同步**：host 将原生 session 事件投影为可恢复 SSE 流；伴生应用只在事件到达时刷新状态/历史，不再靠高频轮询拖慢开关。
+- 🛡️ **实例租约**：端口桥记录 `instanceId` 和过期时间；重启/HMR 时旧伴生连接不能污染新 host。
 - 🔄 **与 DSH 生命周期联动**：DSH 彻底退出时桌宠一起退出；重新打开时按上次开关状态自动恢复（开启则拉起桌宠、关闭则保持关闭）
 - 🔌 **零配置发现**：插件把监听端口写入 `$DSH_HOME/pet-bridge.json`，伴生应用自动找到 host；DSH 重启换端口也能自愈。
 
@@ -18,7 +20,7 @@
 ```
 dsh-desktop-pet/
 ├── plugin/      # DSH 插件 host 半区（cordis）：chat SSE 通道 + 记忆 + 端口桥
-└── companion/   # Swift 伴生应用：透明置顶窗口 + 宠物页面 + SSE 客户端
+└── companion/   # Swift 伴生应用：透明置顶窗口 + 宠物页面 + SSE 投影客户端
 ```
 
 ## 快速开始
@@ -41,7 +43,8 @@ pnpm add "file:/path/to/dsh-desktop-pet/plugin"
 重启 DeepSeek Harness（或等待 patch 热加载），验证：
 
 ```sh
-curl -s http://127.0.0.1:<port>/api/pet/health   # {"ok":true,...}
+cat ~/.dsh/pet-bridge.json
+curl -s http://127.0.0.1:<port>/api/pet/health   # {"ok":true,"instanceId":"...",...}
 ```
 
 ### 2. 构建并运行桌宠（macOS）
@@ -71,13 +74,15 @@ curl -N -X POST http://127.0.0.1:<port>/api/pet/chat \
 │    └─ DeepSeek 图标 + CSS 动画 + 气泡 + 输入框
 │         │  HTTP loopback + SSE 流式
 ├─ plugin/（cordis host 半区，随 DSH 运行）
-│    ├─ /api/pet/chat   POST → ctx.llm.stream → SSE 逐字
-│    ├─ /api/pet/config / memory / bridge / health
-│    └─ $DSH_HOME/pet-bridge.json（端口发现）
+│    ├─ /api/pet/chat   POST → apiProxy 原生 Agent session → SSE 逐字
+│    ├─ /api/pet/events GET  → session/event 投影 + 有界重放
+│    ├─ /api/pet/history / status / cancel / control
+│    └─ $DSH_HOME/pet-bridge.json（端口 + instanceId + 租约）
 ```
 
-- 对话模型默认跟随 DSH 全局设置（`agent-default-model`），可独立覆盖。
-- 纯聊天模式：不调用工具、不进入 agent 循环。
+- `桌宠对话` 是唯一事实来源；不要将其替换为另一个独立的 LLM 聊天记录。
+- 桌宠可执行普通 Agent 任务；权限确认和高风险操作仍回到完整 Harness 界面处理。
+- 网页内悬浮开关已移除，避免遮挡 Harness 原生控件；使用 macOS 菜单栏桌宠图标的开关。
 - DSH 桌面应用关窗仅隐藏主窗口，host 子进程持续运行 → 桌宠不受影响。
 
 ## 开发
@@ -89,10 +94,11 @@ cd companion && swift build      # 伴生应用调试构建
 
 ## 路线图
 
-- [x] MVP：chat SSE 通道 + Swift 置顶窗口 + 气泡对话 + 记忆
+- [x] MVP：原生 session + Swift 置顶窗口 + 气泡对话 + 双端历史
+- [x] Cordis 生命周期/事件升级：实例租约、HMR 清理、SSE 投影
 - [ ] 形象系统：换肤/自定义宠物（pet.json 已预留抽象）
 - [ ] 语音输入、开机自启、多屏记忆
-- [ ] 与 DSH 会话活动联动动画
+- [ ] 完整会话跳转、任务摘要与审批回到桌面端的 handoff
 
 ## License
 

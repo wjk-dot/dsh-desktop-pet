@@ -1,6 +1,6 @@
 /**
  * 桌宠开关状态：$DSH_HOME/pet-desktop.json 持久化（默认开启）。
- * DSH 界面注入的悬浮开关与伴生应用都以此为唯一事实来源。
+ * host 状态栏入口与伴生应用都以此为唯一事实来源。
  */
 
 import { readFileSync, renameSync, writeFileSync } from 'node:fs'

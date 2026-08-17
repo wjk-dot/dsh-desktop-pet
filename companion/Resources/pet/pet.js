@@ -20,11 +20,15 @@
   const inputText = document.getElementById('inputText')
   const sendBtn = document.getElementById('sendBtn')
   const offlineTag = document.getElementById('offlineTag')
+  const activityTag = document.getElementById('activityTag')
+  const activityText = document.getElementById('activityText')
+  const cancelBtn = document.getElementById('cancelBtn')
   const petEl = document.getElementById('pet')
   const petIconEl = document.getElementById('petIcon')
 
   let state = 'idle'        // idle | listening | thinking | speaking | offline
   let streaming = false     // 正在等待/接收回复
+  let agentWasRunning = false
 
   /* ---------- 桌宠尺寸（可滚轮缩放，Swift 持久化） ---------- */
 
@@ -397,6 +401,13 @@
   })
 
   sendBtn.addEventListener('click', send)
+  cancelBtn.addEventListener('click', function (e) {
+    e.stopPropagation()
+    if (!streaming) return
+    activityText.textContent = '正在停止任务...'
+    cancelBtn.disabled = true
+    post('cancel')
+  })
   inputText.addEventListener('keydown', function (e) {
     if (e.key === 'Enter') send()
     if (e.key === 'Escape') closeInput()
@@ -456,9 +467,47 @@
       renderLastWithCaret()
     },
 
+    /** 原生 Agent 的工具执行状态：桌宠不再在 shell/文件操作期间静默等待。 */
+    renderActivity: function (activity) {
+      if (!activity || typeof activity.name !== 'string') return
+      if (activity.state === 'running') {
+        activityText.textContent = '正在执行: ' + activity.name
+        cancelBtn.disabled = false
+        activityTag.hidden = false
+      } else if (activity.state === 'error') {
+        activityText.textContent = '工具失败: ' + activity.name
+        cancelBtn.disabled = false
+        activityTag.hidden = false
+      }
+    },
+
+    /** 轮询到的原生 Agent 状态，包含从桌面端发起的同一条会话。 */
+    updateAgentStatus: function (status) {
+      if (!status || typeof status.running !== 'boolean') return
+      if (status.running && !streaming) {
+        streaming = true
+        setState('thinking')
+      }
+      if (status.running) {
+        const tool = status.currentTool || status.lastTool
+        activityText.textContent = tool && tool.name ? '正在执行: ' + tool.name : 'Agent 正在执行任务'
+        cancelBtn.disabled = false
+        activityTag.hidden = false
+      } else if (agentWasRunning && streaming) {
+        // 任务若从 Harness 桌面端发起，没有本窗口的 SSE done 帧；
+        // 原生 turn 结束就是两端共用的完成信号。
+        window.petBridge.renderDone()
+      } else if (!streaming) {
+        activityTag.hidden = true
+      }
+      agentWasRunning = status.running
+    },
+
     /** 回复结束：移除光标、说完歇 1.6s 回待机（不自动收起，保留会话面板） */
     renderDone: function () {
       streaming = false
+      activityTag.hidden = true
+      cancelBtn.disabled = false
       // 移除末尾光标
       const richEl = transcript.querySelector('.msg-assistant:last-of-type .rich')
       if (richEl) richEl.innerHTML = renderRich(conversation[lastEntryIndex] ? conversation[lastEntryIndex].raw : '')
@@ -473,6 +522,8 @@
     /** 出错：以一条临时 assistant 消息呈现，3s 后移除 */
     renderError: function (message) {
       streaming = false
+      activityTag.hidden = true
+      cancelBtn.disabled = false
       const idx = conversation.push({
         role: 'assistant',
         raw: '😢 ' + (message || '出错了'),

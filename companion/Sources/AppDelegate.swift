@@ -41,7 +41,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
-        // 桌宠开关（DSH 界面悬浮开关）→ 隐藏/显示窗口 + 托盘状态
+        // 桌宠开关（host 状态栏入口）→ 隐藏/显示窗口 + 托盘状态
         host.onEnabledChange = { [weak self] enabled in
             DispatchQueue.main.async {
                 self?.window?.setPetEnabled(enabled)
@@ -148,8 +148,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(toggleItem)
         self.toggleMenuItem = toggleItem
         menu.addItem(NSMenuItem(
-            title: "清空对话记忆",
-            action: #selector(clearMemory),
+            title: "刷新桌宠会话",
+            action: #selector(refreshHistory),
             keyEquivalent: ""
         ))
         menu.addItem(NSMenuItem.separator())
@@ -163,12 +163,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func toggleWindow() {
-        guard let window else { return }
-        if window.isVisible {
-            window.orderOut(nil)
-        } else {
-            window.orderFrontRegardless()
-        }
+        host?.setEnabled(!(host?.isEnabled ?? true))
     }
 
     /// 桌宠开关状态 → 托盘第一项文案/可用性。
@@ -177,9 +172,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         toggleMenuItem?.isEnabled = enabled
     }
 
-    @objc private func clearMemory() {
-        host?.clearMemory()
-        window?.notifyMemoryCleared()
+    @objc private func refreshHistory() {
+        host?.fetchHistory()
     }
 
     @objc private func quitApp() {

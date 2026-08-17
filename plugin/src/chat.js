@@ -1,8 +1,6 @@
 /**
  * PetChatService：桌宠对话核心。
- * 直接走官方 `ctx.llm.stream()`（与自动会话标题同一通道），
- * 不经过完整 agent 循环——快、省、符合「简单对话」定位。
- * 模型默认跟随全局 agent-default-model 选择，可独立覆盖。
+ * 通过官方 apiProxy 驱动同一条原生 Agent session，而非另开轻量 LLM 对话。
  */
 
 import { dshHome } from './dsh-home.js'
@@ -28,7 +26,7 @@ export class PetChatService {
    * @param {import('@deepseek-ai/cordis').Context} ctx
    * @param {PetChatConfig} [config]
    */
-  constructor(ctx, config = {}) {
+  constructor(ctx, config = {}, eventHub) {
     this.ctx = ctx
     this.config = {
       personaName: '小鲸鱼',
@@ -36,7 +34,10 @@ export class PetChatService {
       ...config,
     }
     this.memory = new PetMemory(dshHome(), this.config.maxHistoryTurns)
-    this.nativeSession = new PetNativeSession(ctx, this.memory.history())
+    this.eventHub = eventHub
+    this.nativeSession = new PetNativeSession(ctx, this.memory.history(), (event, status) => {
+      this.eventHub?.publish('session', { event, status })
+    })
   }
 
   /** 当前系统提示词。 */
@@ -45,12 +46,12 @@ export class PetChatService {
   }
 
   /**
-   * 流式对话：把用户消息送入 LLM，逐字 yield 回复文本。
-   * 完成后把 (user, assistant) 追加进滚动记忆并持久化。
+ * 流式对话：把用户消息送进 Harness 原生 Agent，而不是另起一个 LLM 通道。
+ * 因此工具调用、Full access、工作区和会话日志与桌面端完全共用。
    *
    * @param {string} message 用户消息。
    * @param {AbortSignal} [signal] 客户端断开/超时取消。
-   * @yields {string} 回复文本增量。
+   * @yields {{type: 'delta', text: string} | {type: 'activity', activity: object}} 事件。
    */
   async *streamChat(message, signal) {
     if (typeof message !== 'string' || message.trim() === '') {
@@ -59,19 +60,18 @@ export class PetChatService {
     const messageText = message.trim()
 
     let reply = ''
-    for await (const text of this.nativeSession.prompt(messageText, signal)) {
-      reply += text
-      yield text
+    for await (const event of this.nativeSession.prompt(messageText, signal)) {
+      if (event.type === 'activity') {
+        yield event
+        continue
+      }
+      reply += event.text
+      yield event
     }
 
     const history = await this.nativeSession.history()
     this.memory.entries = history
     this.memory.save()
-  }
-
-  /** 清空对话记忆。 */
-  clearMemory() {
-    this.memory.clear()
   }
 
   /** 当前会话记录（供 /api/pet/history 读取，伴生应用启动时载入显示）。 */
@@ -84,6 +84,14 @@ export class PetChatService {
     this.memory.entries = history
     this.memory.save()
     return history
+  }
+
+  async statusView() {
+    return this.nativeSession.status()
+  }
+
+  async cancelTurn() {
+    return this.nativeSession.cancel()
   }
 
   /** 当前配置视图（供 /api/pet/config 读取）。 */

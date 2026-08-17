@@ -4,7 +4,7 @@
  * 桥文件同时携带桌宠开关（enabled），伴生应用据此隐藏/显示自己。
  */
 
-import { readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { dshHome } from './dsh-home.js'
 import { loadEnabled } from './control.js'
@@ -37,12 +37,16 @@ export function bridgeFilePath(dir = dshHome()) {
  * @param {string} [dir] DSH home。
  * @returns {string} 桥文件路径。
  */
-export function writeBridgeFile(port, dir = dshHome()) {
+export function writeBridgeFile(port, { dir = dshHome(), instanceId, leaseMs = 15_000 } = {}) {
+  if (typeof instanceId !== 'string' || instanceId === '') throw new Error('missing-bridge-instance-id')
+  const now = Date.now()
   const data = {
     port,
     pid: process.pid,
+    instanceId,
     version: packageVersion(),
-    startedAt: Date.now(),
+    startedAt: now,
+    expiresAt: now + leaseMs,
     home: dir,
     enabled: loadEnabled(dir),
   }
@@ -51,6 +55,18 @@ export function writeBridgeFile(port, dir = dshHome()) {
   writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf8')
   renameSync(tmp, file)
   return file
+}
+
+/** Remove a bridge only when it is still owned by this runtime. */
+export function removeBridgeFile(instanceId, dir = dshHome()) {
+  const current = readBridgeFile(dir)
+  if (current?.instanceId !== instanceId) return false
+  try {
+    unlinkSync(bridgeFilePath(dir))
+    return true
+  } catch {
+    return false
+  }
 }
 
 /**

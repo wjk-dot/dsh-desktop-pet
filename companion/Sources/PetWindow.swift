@@ -71,7 +71,7 @@ final class PetWindow: NSWindow {
         webView.eval("window.petBridge && window.petBridge.clearTranscript()")
     }
 
-    /// 桌宠开关（DSH 界面悬浮开关控制）：关闭隐藏窗口，开启恢复显示。
+    /// 桌宠开关（由 host 状态栏入口控制）：关闭隐藏窗口，开启恢复显示。
     func setPetEnabled(_ enabled: Bool) {
         if enabled {
             clampToVisible()

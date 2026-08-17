@@ -1,13 +1,13 @@
 import Foundation
 
-/// Host 客户端：读端口桥、健康轮询、SSE 流式对话。
+/// Host 客户端：读端口桥、健康探测和原生会话 SSE 投影。
 /// 对话走原生 URLSession（非浏览器，无 CORS），loopback 直连 DSH host。
 final class HostClient: NSObject, URLSessionDataDelegate {
     /// 原生壳要执行的 JS 脚本（由 AppDelegate 桥接到 WebView）。
     var onEval: ((String) -> Void)?
     /// 连接状态变化（主线程回调）。
     var onConnectionChange: ((Bool) -> Void)?
-    /// 桌宠开关变化（主线程回调；DSH 界面开关控制）。
+    /// 桌宠开关变化（主线程回调；原生状态栏入口控制）。
     var onEnabledChange: ((Bool) -> Void)?
     /// DSH 宿主进程退出回调（生命周期联动：伴生应用随之退出）。
     var onHostExit: (() -> Void)?
@@ -20,11 +20,17 @@ final class HostClient: NSObject, URLSessionDataDelegate {
     private var baseURL: URL?
     private var bridgeTimer: Timer?
     private var healthTimer: Timer?
-    private var historyTimer: Timer?
     private var pidTimer: Timer?
     private var hostPid: pid_t?
     private var pidDeadCount = 0
     private var chatSession: URLSession!
+    private var eventTask: URLSessionDataTask?
+    private var eventBuffer = Data()
+    private var lastEventSequence = 0
+    private var bridgeInstanceId: String?
+    private var reconnectWorkItem: DispatchWorkItem?
+    private var reconnectAfterCancellation = false
+    private var refreshPending = false
 
     // 当前进行中的对话
     private var currentTask: URLSessionDataTask?
@@ -56,25 +62,18 @@ final class HostClient: NSObject, URLSessionDataDelegate {
 
     func start() {
         reloadBridge()
-        // 开关由 DSH 写入一个本地 JSON 文件。单独高频读取这个小文件，
-        // 避免把 UI 响应时间绑在健康检查的 2 秒周期上。
-        let bridgeTimer = Timer(timeInterval: 0.1, repeats: true) { [weak self] _ in
+        // Bridge 是租约，不是 UI 状态轮询；只用于发现 host replacement。
+        let bridgeTimer = Timer(timeInterval: 1.0, repeats: true) { [weak self] _ in
             self?.reloadBridge()
         }
         RunLoop.main.add(bridgeTimer, forMode: .common)
         self.bridgeTimer = bridgeTimer
 
-        let timer = Timer(timeInterval: 2.0, repeats: true) { [weak self] _ in
+        let timer = Timer(timeInterval: 5.0, repeats: true) { [weak self] _ in
             self?.checkHealth()
         }
         RunLoop.main.add(timer, forMode: .common)
         healthTimer = timer
-        let historyTimer = Timer(timeInterval: 2.0, repeats: true) { [weak self] _ in
-            self?.fetchHistory()
-        }
-        RunLoop.main.add(historyTimer, forMode: .common)
-        self.historyTimer = historyTimer
-
         // 生命周期联动：监视桥文件里的 host PID，DSH 彻底退出后伴生应用一起退出。
         let pidTimer = Timer(timeInterval: 2.0, repeats: true) { [weak self] _ in
             self?.checkHostPid()
@@ -84,19 +83,23 @@ final class HostClient: NSObject, URLSessionDataDelegate {
 
         checkHealth()
         fetchHistory()
+        fetchStatus()
+        connectEvents()
     }
 
     func stop() {
         bridgeTimer?.invalidate()
         healthTimer?.invalidate()
-        historyTimer?.invalidate()
         pidTimer?.invalidate()
         currentTask?.cancel()
+        eventTask?.cancel()
+        reconnectWorkItem?.cancel()
+        reconnectAfterCancellation = false
     }
 
     /// 检查桥文件 host PID 是否存活；连续三次（约 6s）"PID 失活且健康检查离线"
     /// 才回调退出（伴生应用与 DSH 生命周期绑定）。宽限避免宿主重启瞬时误退：
-    /// 重启时新 host 会快速重写桥文件（新 PID），0.1s 桥轮询随即恢复判定。
+    /// 重启时新 host 会快速重写桥文件（新 PID），桥轮询随即恢复判定。
     private func checkHostPid() {
         guard let pid = hostPid, pid > 0 else { return }
         let alive = (kill(pid, 0) == 0) || (errno == EPERM)
@@ -120,11 +123,17 @@ final class HostClient: NSObject, URLSessionDataDelegate {
     func reloadBridge() {
         guard let data = try? Data(contentsOf: bridgeFileURL()),
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let port = obj["port"] as? Int, port > 0 else {
+              let port = obj["port"] as? Int, port > 0,
+              let expiresAt = obj["expiresAt"] as? Double,
+              expiresAt > Date().timeIntervalSince1970 * 1000 else {
             baseURL = nil
             return
         }
-        baseURL = URL(string: "http://127.0.0.1:\(port)")
+        let newBase = URL(string: "http://127.0.0.1:\(port)")
+        let newInstanceId = obj["instanceId"] as? String
+        let replaced = baseURL != newBase || bridgeInstanceId != newInstanceId
+        baseURL = newBase
+        bridgeInstanceId = newInstanceId
         if let pid = obj["pid"] as? Int, pid > 0 {
             hostPid = pid_t(pid)
         }
@@ -134,6 +143,18 @@ final class HostClient: NSObject, URLSessionDataDelegate {
                 lastEnabled = enabled
                 DispatchQueue.main.async { self.onEnabledChange?(enabled) }
             }
+        }
+        if replaced {
+            lastEventSequence = 0
+            reconnectWorkItem?.cancel()
+            if eventTask != nil {
+                reconnectAfterCancellation = true
+                eventTask?.cancel()
+            } else {
+                connectEvents()
+            }
+            fetchHistory()
+            fetchStatus()
         }
     }
 
@@ -145,7 +166,7 @@ final class HostClient: NSObject, URLSessionDataDelegate {
             setOnline(false)
             return
         }
-        var req = URLRequest(url: base.appendingPathComponent("/api/pet/health"))
+        var req = request(base.appendingPathComponent("/api/pet/health"))
         req.timeoutInterval = 3
         URLSession.shared.dataTask(with: req) { [weak self] _, resp, _ in
             let ok = (resp as? HTTPURLResponse)?.statusCode == 200
@@ -157,6 +178,57 @@ final class HostClient: NSObject, URLSessionDataDelegate {
         if lastOnline == online { return }
         lastOnline = online
         onConnectionChange?(online)
+    }
+
+    private func request(_ url: URL) -> URLRequest {
+        var req = URLRequest(url: url)
+        if let bridgeInstanceId {
+            req.setValue(bridgeInstanceId, forHTTPHeaderField: "X-Pet-Instance")
+        }
+        return req
+    }
+
+    // MARK: - Reactive session event stream
+
+    private func connectEvents() {
+        guard eventTask == nil, let base = baseURL else { return }
+        var req = request(base.appendingPathComponent("/api/pet/events"))
+        if lastEventSequence > 0 {
+            var components = URLComponents(url: req.url!, resolvingAgainstBaseURL: false)!
+            components.queryItems = [URLQueryItem(name: "after", value: String(lastEventSequence))]
+            req.url = components.url
+        }
+        req.timeoutInterval = 0
+        req.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+        eventBuffer = Data()
+        eventTask = chatSession.dataTask(with: req)
+        eventTask?.resume()
+    }
+
+    private func scheduleEventReconnect() {
+        reconnectWorkItem?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.connectEvents() }
+        reconnectWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0, execute: work)
+    }
+
+    private func scheduleProjectionRefresh() {
+        guard !refreshPending else { return }
+        refreshPending = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self] in
+            self?.refreshPending = false
+            self?.fetchStatus()
+            self?.fetchHistory()
+        }
+    }
+
+    private func scheduleStatusRefresh() {
+        guard !refreshPending else { return }
+        refreshPending = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self] in
+            self?.refreshPending = false
+            self?.fetchStatus()
+        }
     }
 
     // MARK: - 对话
@@ -175,7 +247,7 @@ final class HostClient: NSObject, URLSessionDataDelegate {
         replyText = ""
         sseBuffer = Data()
 
-        var req = URLRequest(url: base.appendingPathComponent("/api/pet/chat"))
+        var req = request(base.appendingPathComponent("/api/pet/chat"))
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         let body: [String: Any] = ["message": text]
@@ -185,20 +257,66 @@ final class HostClient: NSObject, URLSessionDataDelegate {
         currentTask?.resume()
     }
 
-    func clearMemory() {
+    /// 中止同一原生 session 的当前 Agent turn，不依赖 SSE 连接是否仍在。
+    func cancelTurn() {
         guard let base = baseURL else { return }
-        var req = URLRequest(url: base.appendingPathComponent("/api/pet/memory"))
+        var req = request(base.appendingPathComponent("/api/pet/cancel"))
+        req.httpMethod = "POST"
+        URLSession.shared.dataTask(with: req) { [weak self] data, response, _ in
+            let ok = (response as? HTTPURLResponse)?.statusCode == 200
+            DispatchQueue.main.async {
+                if ok {
+                    self?.evalJS("window.petBridge && window.petBridge.renderActivity({name:'任务',state:'done'})")
+                } else if let data,
+                          let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                          let message = obj["error"] as? String {
+                    self?.evalJS("window.petBridge && window.petBridge.renderError(\(Self.jsString(message)))")
+                }
+            }
+        }.resume()
+    }
+
+    /// The status item is the reliable control surface. It changes host state,
+    /// rather than merely hiding this one native window locally.
+    func setEnabled(_ enabled: Bool) {
+        guard let base = baseURL else { return }
+        var req = request(base.appendingPathComponent("/api/pet/control"))
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.httpBody = try? JSONSerialization.data(withJSONObject: ["action": "clear"])
-        URLSession.shared.dataTask(with: req).resume()
+        req.httpBody = try? JSONSerialization.data(withJSONObject: ["enabled": enabled])
+        URLSession.shared.dataTask(with: req) { [weak self] data, response, _ in
+            guard (response as? HTTPURLResponse)?.statusCode == 200,
+                  let data,
+                  let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let applied = obj["enabled"] as? Bool else { return }
+            self?.isEnabled = applied
+            DispatchQueue.main.async { self?.onEnabledChange?(applied) }
+        }.resume()
+    }
+
+    /// 原生 Agent 状态轮询：桌面端和桌宠端发起的任务共用这份状态。
+    func fetchStatus() {
+        reloadBridge()
+        guard let base = baseURL else { return }
+        var req = request(base.appendingPathComponent("/api/pet/status"))
+        req.timeoutInterval = 2
+        URLSession.shared.dataTask(with: req) { [weak self] data, _, _ in
+            guard let data,
+                  let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let status = obj["status"],
+                  let json = try? JSONSerialization.data(withJSONObject: status),
+                  let script = String(data: json, encoding: .utf8) else { return }
+            DispatchQueue.main.async {
+                self?.evalJS("window.petBridge && window.petBridge.updateAgentStatus(\(script))")
+            }
+        }.resume()
     }
 
     /// 拉取 host 端会话记录，推给页面显示（启动/恢复在线时调用）。
     func fetchHistory() {
         reloadBridge()
         guard let base = baseURL else { return }
-        var req = URLRequest(url: base.appendingPathComponent("/api/pet/history"))
+        var req = request(base.appendingPathComponent("/api/pet/history"))
         req.timeoutInterval = 5
         URLSession.shared.dataTask(with: req) { [weak self] data, _, _ in
             guard let data,
@@ -251,6 +369,14 @@ final class HostClient: NSObject, URLSessionDataDelegate {
         didReceive response: URLResponse,
         completionHandler: @escaping (URLSession.ResponseDisposition) -> Void
     ) {
+        if dataTask == eventTask {
+            if let http = response as? HTTPURLResponse, http.statusCode != 200 {
+                completionHandler(.cancel)
+                return
+            }
+            completionHandler(.allow)
+            return
+        }
         if let http = response as? HTTPURLResponse, http.statusCode != 200 {
             evalJS("window.petBridge && window.petBridge.renderError(\"HTTP \\(http.statusCode)\")")
             chatInFlight = false
@@ -261,11 +387,27 @@ final class HostClient: NSObject, URLSessionDataDelegate {
     }
 
     func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
+        if dataTask == eventTask {
+            eventBuffer.append(data)
+            parseEventStream()
+            return
+        }
         sseBuffer.append(data)
         parseSSE()
     }
 
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        if task == eventTask {
+            eventTask = nil
+            let cancelled = (error as NSError?)?.code == NSURLErrorCancelled
+            if reconnectAfterCancellation {
+                reconnectAfterCancellation = false
+                connectEvents()
+            } else if !cancelled {
+                scheduleEventReconnect()
+            }
+            return
+        }
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             if let error, (error as NSError).code != NSURLErrorCancelled {
@@ -277,6 +419,40 @@ final class HostClient: NSObject, URLSessionDataDelegate {
                 self.chatInFlight = false
             }
             self.currentTask = nil
+        }
+    }
+
+    private func parseEventStream() {
+        let separator = Data("\n\n".utf8)
+        while let range = eventBuffer.range(of: separator) {
+            let frame = eventBuffer.subdata(in: eventBuffer.startIndex..<range.lowerBound)
+            eventBuffer.removeSubrange(eventBuffer.startIndex..<range.upperBound)
+            guard let text = String(data: frame, encoding: .utf8) else { continue }
+            var payload: String?
+            for line in text.split(separator: "\n", omittingEmptySubsequences: false) {
+                if line.hasPrefix("id:"), let seq = Int(line.dropFirst(3).trimmingCharacters(in: .whitespaces)) {
+                    lastEventSequence = max(lastEventSequence, seq)
+                }
+                if line.hasPrefix("data:") {
+                    payload = String(line.dropFirst(5)).trimmingCharacters(in: .whitespaces)
+                }
+            }
+            guard let payload,
+                  let data = payload.data(using: .utf8),
+                  let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { continue }
+            if let seq = obj["seq"] as? Int { lastEventSequence = max(lastEventSequence, seq) }
+            if let type = obj["type"] as? String, type == "control",
+               let state = obj["data"] as? [String: Any], let enabled = state["enabled"] as? Bool {
+                isEnabled = enabled
+                lastEnabled = enabled
+                DispatchQueue.main.async { self.onEnabledChange?(enabled) }
+            }
+            let nativeType = ((obj["data"] as? [String: Any])?["event"] as? [String: Any])?["type"] as? String
+            if nativeType == "assistant/chunk" {
+                scheduleStatusRefresh()
+            } else {
+                scheduleProjectionRefresh()
+            }
         }
     }
 
@@ -301,6 +477,12 @@ final class HostClient: NSObject, URLSessionDataDelegate {
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let type = obj["type"] as? String else { return }
         switch type {
+        case "activity":
+            if let activity = obj["activity"],
+               let data = try? JSONSerialization.data(withJSONObject: activity),
+               let json = String(data: data, encoding: .utf8) {
+                evalJS("window.petBridge && window.petBridge.renderActivity(\(json))")
+            }
         case "delta":
             if let text = obj["text"] as? String {
                 replyText += text

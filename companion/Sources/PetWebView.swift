@@ -102,6 +102,8 @@ final class PetWebView: WKWebView, WKScriptMessageHandler, WKNavigationDelegate 
             host.sendChat(text)
         case "drag":
             (window as? PetWindow)?.beginDrag()
+        case "cancel":
+            host.cancelTurn()
         case "layout":
             let mode = body["mode"] as? String ?? "compact"
             let width = body["width"] as? Double ?? 0

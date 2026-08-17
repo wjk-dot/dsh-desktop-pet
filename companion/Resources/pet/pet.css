@@ -5,9 +5,52 @@
 /* HTML hidden 属性必须压过组件的 display 规则（.input-bar 用了 display:flex 会盖掉 UA 的 [hidden]） */
 .bubble[hidden],
 .input-bar[hidden],
-.offline-tag[hidden] {
+.offline-tag[hidden],
+.activity-tag[hidden] {
   display: none !important;
 }
+
+.activity-tag {
+  position: absolute;
+  left: 50%;
+  bottom: 52px;
+  transform: translateX(-50%);
+  max-width: 310px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 5px 4px 9px;
+  border-radius: 6px;
+  color: #243553;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 2px 8px rgba(20, 60, 120, 0.16);
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+.activity-tag span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.activity-tag button {
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 4px;
+  color: #8b2635;
+  background: rgba(214, 58, 74, 0.12);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+
+.activity-tag button:hover { background: rgba(214, 58, 74, 0.24); }
 
 html, body {
   width: 100%;

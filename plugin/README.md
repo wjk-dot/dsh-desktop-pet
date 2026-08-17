@@ -9,8 +9,10 @@ DeepSeek Harness（DSH）的桌面伴侣：一只以 DeepSeek 图标为形象的
 - **点击即可对话**：不用点开 DSH 聊天窗口，点桌宠弹出输入框，回车发送。
 - **头顶气泡流式回复**：DeepSeek 的回答逐字出现在桌宠头顶的气泡里。
 - **原生悬浮窗口**：Swift 实现，透明、无边框、永远置顶；DSH 主窗口关闭（托盘常驻）时桌宠依然在线。
-- **原生会话**：启动后会在当前工作区创建一个固定的 `桌宠对话` session，直接出现在左侧会话列表。
+- **原生会话**：启动后会在当前工作区创建或恢复固定的 `桌宠对话` session，直接出现在左侧会话列表。
 - **双端连续对话**：桌宠发言与 Harness 界面发言进入同一个 Agent session；两边都能看到记录并继续同一上下文。
+- **事件驱动投影**：`/api/pet/events` 提供带序号和重放窗口的 SSE，桌面端任务不用等历史轮询才出现在桌宠上。
+- **可靠生命周期**：桥文件有 host `instanceId` 和租约，插件 HMR/重启会先撤销上一个 runtime 的路由、订阅和桥所有权。
 - **历史迁移**：旧版 `$DSH_HOME/pet-chat.json` 会作为首次原生会话的上下文导入；已有 `桌宠对话记录.md` 保留为旧备份，不再自动生成。
 - **模型跟随全局**：默认使用 DSH 设置的默认模型（provider/model/reasoning），可单独覆盖。
 
@@ -23,9 +25,9 @@ DeepSeek Harness（DSH）的桌面伴侣：一只以 DeepSeek 图标为形象的
 │         │  HTTP loopback + SSE
 ├─ plugin/     DSH 插件 host 半区（cordis）
 │    ├─ /api/pet/chat     POST → SSE 流式转发原生 Agent session
-│    ├─ /api/pet/config   读取配置/模型
-│    ├─ /api/pet/memory   清空记忆
-│    ├─ /api/pet/bridge   刷新端口桥
+│    ├─ /api/pet/events   原生 session 事件 SSE（支持 after=<seq> 重放）
+│    ├─ /api/pet/history / status / cancel / control
+│    ├─ /api/pet/bridge   刷新端口桥（实例租约）
 │    └─ /api/pet/health   健康检查
 └─ $DSH_HOME/pet-bridge.json（端口发现：伴生应用由此找到 host）
 ```
@@ -78,7 +80,7 @@ xcodebuild -project DeepSeekPet.xcodeproj -scheme DeepSeekPet build
 # 产物: build/Release/DeepSeekPet.app
 ```
 
-双击运行，桌宠出现在屏幕右下角。
+双击运行，桌宠出现在屏幕右下角。开关使用 macOS 菜单栏桌宠图标，不向 Harness 页面注入可能遮挡原生控件的悬浮按钮。
 
 ## 对话 API
 
