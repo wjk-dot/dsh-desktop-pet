@@ -268,7 +268,7 @@ export class PetNativeSession {
     return { promise, cancel }
   }
 
-  async *promptInternal(message, signal) {
+  async *promptInternal(content, signal) {
     const sessionId = await this.ensure()
     let wake
     let closed = false
@@ -284,7 +284,7 @@ export class PetNativeSession {
     const request = rpc({
       sessionId,
       mode: 'queue',
-      content: [{ type: 'text', text: message }],
+      content,
       clientTimeZone: 'Asia/Shanghai',
     })
     const waiter = this.waitForTurn(request.rpcId, push, signal)
@@ -309,7 +309,13 @@ export class PetNativeSession {
   }
 
   async *prompt(message, signal) {
-    yield * this.promptInternal(message, signal)
+    yield * this.promptInternal([{ type: 'text', text: message }], signal)
+  }
+
+  /** Send browser-compatible text/image content through the official DSH prompt API. */
+  async *promptContent(content, signal) {
+    if (!Array.isArray(content) || content.length === 0) throw new Error('empty-content')
+    yield * this.promptInternal(content, signal)
   }
 
   async history() {

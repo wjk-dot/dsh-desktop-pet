@@ -7,6 +7,8 @@ import { dshHome } from './dsh-home.js'
 import { PetMemory } from './memory.js'
 import { PetNativeSession } from './native-session.js'
 import { buildPersona } from './persona.js'
+import { saveVisionCapture, visionPrompt, visionStatus } from './vision.js'
+import { loadPreferences } from './preferences.js'
 
 /**
  * @typedef {Object} PetChatConfig
@@ -74,6 +76,25 @@ export class PetChatService {
     this.memory.save()
   }
 
+  /**
+   * Submit a text-only Agent turn that tells the optional local Qwen MCP to
+   * inspect the retained image path. The active DeepSeek model is text-only,
+   * so including an image PromptContentPart here would make DSH reject the
+   * entire turn before the Agent has a chance to call vision_chat or OCR.
+   */
+  async *streamVision({ data, name, prompt }, signal) {
+    const preferences = loadPreferences()
+    if (!preferences.visionEnabled) throw new Error('vision-disabled')
+    const capture = await saveVisionCapture(data, name)
+    const status = visionStatus(preferences)
+    const text = visionPrompt(prompt, capture.file, status.preflightReady)
+    const content = [{ type: 'text', text }]
+    for await (const event of this.nativeSession.promptContent(content, signal)) yield event
+    const history = await this.nativeSession.history()
+    this.memory.entries = history
+    this.memory.save()
+  }
+
   /** 当前会话记录（供 /api/pet/history 读取，伴生应用启动时载入显示）。 */
   historyView() {
     return this.memory.history().map((m) => ({ role: m.role, content: m.content, ...(m.at === undefined ? {} : { at: m.at }) }))
@@ -106,6 +127,7 @@ export class PetChatService {
         reasoningEffort: this.config.model?.reasoningEffort ?? selection.reasoningEffort ?? null,
       },
       memoryTurns: Math.floor(this.memory.history().length / 2),
+      vision: visionStatus(loadPreferences()),
     }
   }
 

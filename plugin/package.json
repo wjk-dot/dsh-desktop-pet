@@ -21,6 +21,8 @@
     "client.js",
     "toggle.js",
     "cordis.patch.yml",
+    "qwen-vision.patch.yml",
+    "install-vision.sh",
     "README.md",
     "LICENSE"
   ],

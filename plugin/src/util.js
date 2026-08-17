@@ -32,13 +32,13 @@ export function requireMethod(req, res, method) {
  * @param {import('node:http').IncomingMessage} req
  * @returns {Promise<Record<string, unknown>>}
  */
-export function readJsonBody(req) {
+export function readJsonBody(req, maxBytes = 64 * 1024) {
   return new Promise((resolve, reject) => {
     let size = 0
     const chunks = []
     req.on('data', (chunk) => {
       size += chunk.length
-      if (size > 64 * 1024) {
+      if (size > maxBytes) {
         reject(new Error('body-too-large'))
         queueMicrotask(() => req.destroy())
         return

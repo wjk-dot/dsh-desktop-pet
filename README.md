@@ -14,6 +14,7 @@
 - 🛡️ **实例租约**：端口桥记录 `instanceId` 和过期时间；重启/HMR 时旧伴生连接不能污染新 host。
 - 🔄 **与 DSH 生命周期联动**：DSH 彻底退出时桌宠一起退出；重新打开时按上次开关状态自动恢复（开启则拉起桌宠、关闭则保持关闭）
 - 🔌 **零配置发现**：插件把监听端口写入 `$DSH_HOME/pet-bridge.json`，伴生应用自动找到 host；DSH 重启换端口也能自愈。
+- 👁️ **可选 Qwen 视觉**：用户点击桌宠截图按钮后，主屏截图交给本机 Qwen MCP 识别；分析任务、工具调用和结果进入同一条 Harness Agent 执行链。
 
 ## 目录结构
 
@@ -55,6 +56,20 @@ cd companion
 open build/DeepSeekPet.app
 ```
 
+### 3. 可选安装 Qwen 截图分析
+
+视觉功能不打包模型或凭据。到阿里云百炼（DashScope）控制台创建 API Key 后，在 Harness 的
+`设置 → 插件 → DeepSeek 桌宠` 中展开 `Qwen 视觉凭据`，粘贴并保存。Key 仅写入本机
+`$DSH_HOME/pet-qwen-mm.env`（权限 `0600`，界面只显示末四位）。随后运行：
+
+```sh
+cd plugin
+./install-vision.sh
+```
+
+将脚本输出的 `qwen-vision.patch.yml` 条目合并到当前 profile 的 `cordis.patch.yml`，然后重启 Harness；保存或更换 Key 后也需要重启一次。
+首次在桌宠输入栏点击截图按钮时，macOS 会请求“屏幕录制”权限。不会后台录屏；截图仅在用户点击后生成，临时 MCP 输入最多保留 30 分钟。完整步骤见 [plugin/README.md](plugin/README.md#可选qwen-截图分析)。
+
 ## 对话 API
 
 ```sh
@@ -75,6 +90,7 @@ curl -N -X POST http://127.0.0.1:<port>/api/pet/chat \
 │         │  HTTP loopback + SSE 流式
 ├─ plugin/（cordis host 半区，随 DSH 运行）
 │    ├─ /api/pet/chat   POST → apiProxy 原生 Agent session → SSE 逐字
+│    ├─ /api/pet/vision POST JPEG → 本机 Qwen MCP 图像路径 + 原生 session 文本任务
 │    ├─ /api/pet/events GET  → session/event 投影 + 有界重放
 │    ├─ /api/pet/history / status / cancel / control
 │    └─ $DSH_HOME/pet-bridge.json（端口 + instanceId + 租约）

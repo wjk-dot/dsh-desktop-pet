@@ -22,6 +22,8 @@
     <true/>
     <key>NSHighResolutionCapable</key>
     <true/>
+    <key>NSScreenCaptureUsageDescription</key>
+    <string>用于在你点击桌宠截图按钮后分析当前桌面。</string>
     <key>CFBundleIconFile</key>
     <string>icon</string>
     <key>NSAppTransportSecurity</key>

@@ -9,6 +9,7 @@ window.__ModuleLoader__.load({
       showActivity: true,
       reduceMotion: false,
       autoDock: true,
+      visionEnabled: true,
     }
 
     function request(path, init) {
@@ -42,6 +43,10 @@ window.__ModuleLoader__.load({
       const [preferences, setPreferences] = useState(defaults)
       const [enabled, setEnabled] = useState(true)
       const [status, setStatus] = useState(null)
+      const [vision, setVision] = useState(null)
+      const [visionSettings, setVisionSettings] = useState(null)
+      const [apiKey, setApiKey] = useState('')
+      const [visionModel, setVisionModel] = useState('')
       const [loading, setLoading] = useState(true)
       const [saving, setSaving] = useState(false)
       const [message, setMessage] = useState('')
@@ -50,12 +55,16 @@ window.__ModuleLoader__.load({
 
       const reload = useCallback(async () => {
         try {
-          const [pref, control, agent] = await Promise.all([
-            request('/api/pet/preferences'), request('/api/pet/control'), request('/api/pet/status'),
+          const [pref, control, agent, config, settings] = await Promise.all([
+            request('/api/pet/preferences'), request('/api/pet/control'), request('/api/pet/status'), request('/api/pet/config'),
+            request('/api/pet/vision/settings'),
           ])
           setPreferences({ ...defaults, ...pref.preferences })
           setEnabled(!!control.enabled)
           setStatus(agent.status || null)
+          setVision(config.config && config.config.vision ? config.config.vision : null)
+          setVisionSettings(settings.settings || null)
+          setVisionModel(settings.settings && settings.settings.model ? settings.settings.model : '')
           setMessage('')
         } catch (error) {
           setMessage(`无法读取桌宠状态：${error.message}`)
@@ -63,6 +72,23 @@ window.__ModuleLoader__.load({
           setLoading(false)
         }
       }, [])
+
+      const saveVisionSettings = useCallback(async () => {
+        setSaving(true)
+        try {
+          const result = await request('/api/pet/vision/settings', {
+            method: 'POST', body: JSON.stringify({ apiKey, model: visionModel.trim() || undefined }),
+          })
+          setVisionSettings(result.settings)
+          setApiKey('')
+          await reload()
+          setMessage('Qwen 凭据已保存；重启 Harness 后生效')
+        } catch (error) {
+          setMessage(`Qwen 凭据保存失败：${error.message}`)
+        } finally {
+          setSaving(false)
+        }
+      }, [apiKey, reload, visionModel])
 
       useEffect(() => { void reload() }, [reload])
 
@@ -120,6 +146,13 @@ window.__ModuleLoader__.load({
       const activity = status && status.running
         ? (status.currentTool && status.currentTool.name ? `执行中：${status.currentTool.name}` : 'Agent 正在执行任务')
         : '空闲，已连接到同一条 Agent 执行链'
+      const visionSummary = !vision
+        ? '正在检测 Qwen 视觉能力…'
+        : vision.preflightReady
+          ? '本机视觉环境预检通过；重启后的 Harness 会启动 Qwen MCP。'
+          : vision.enabled
+            ? '截图已启用；还需安装 Qwen MCP 并在本机配置 DashScope 凭据。'
+            : '截图分析已关闭。'
       const summary = loading
         ? '正在读取桌宠状态…'
         : `${enabled ? '已启用' : '已关闭'} · ${activity}`
@@ -218,6 +251,38 @@ window.__ModuleLoader__.load({
         label: '自动贴边隐藏', description: '拖动桌宠至屏幕边缘时自动收起，移回边缘热区后展开。', checked: preferences.autoDock,
         onChange: (value) => void savePreferences({ ...preferences, autoDock: value }),
       }),
+      React.createElement(ToggleRow, {
+        label: '启用截图分析', description: visionSummary, checked: preferences.visionEnabled,
+        onChange: (value) => void savePreferences({ ...preferences, visionEnabled: value }),
+      }),
+      React.createElement('div', { style: { padding: '12px 0', borderTop: '1px solid var(--dsw-border, rgba(0,0,0,.1))' } },
+        React.createElement('div', { style: { fontWeight: 600 } }, 'Qwen 视觉凭据'),
+        React.createElement('p', { style: { margin: '4px 0 10px', fontSize: 12, opacity: .7, lineHeight: 1.5 } },
+          visionSettings && visionSettings.configured
+            ? `已保存 DashScope API Key（末四位 ${visionSettings.keySuffix || '****'}）。修改后需重启 Harness。`
+            : '粘贴从阿里云百炼 DashScope 控制台创建的 API Key。密钥只保存在本机。',
+        ),
+        React.createElement('input', {
+          type: 'password', value: apiKey, autoComplete: 'off', spellCheck: false,
+          placeholder: visionSettings && visionSettings.configured ? '输入新 Key 以替换现有凭据' : 'DashScope API Key',
+          onChange: (event) => setApiKey(event.target.value),
+          style: { boxSizing: 'border-box', width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid var(--dsw-alias-border-l2, rgba(0,0,0,.2))', background: 'transparent', color: 'inherit', font: 'inherit' },
+        }),
+        React.createElement('a', {
+          href: 'https://bailian.console.aliyun.com/?tab=model#/api-key', target: '_blank', rel: 'noreferrer',
+          style: { display: 'inline-block', marginTop: 7, color: 'var(--dsw-alias-label-link, #3568d4)', fontSize: 12, textDecoration: 'underline' },
+        }, '前往阿里云百炼创建 DashScope API Key'),
+        React.createElement('input', {
+          type: 'text', value: visionModel, autoComplete: 'off', spellCheck: false,
+          placeholder: '视觉模型（可选，例如 qwen3.7-plus）',
+          onChange: (event) => setVisionModel(event.target.value),
+          style: { boxSizing: 'border-box', width: '100%', marginTop: 8, padding: '8px 10px', borderRadius: 6, border: '1px solid var(--dsw-alias-border-l2, rgba(0,0,0,.2))', background: 'transparent', color: 'inherit', font: 'inherit' },
+        }),
+        React.createElement('button', {
+          type: 'button', disabled: saving || apiKey.trim().length < 8, onClick: () => void saveVisionSettings(),
+          style: { marginTop: 8, padding: '7px 12px', borderRadius: 6, border: 0, background: 'var(--dsw-alias-bg-accent, #3568d4)', color: 'var(--dsw-alias-label-on-accent, white)', cursor: saving || apiKey.trim().length < 8 ? 'default' : 'pointer', opacity: saving || apiKey.trim().length < 8 ? .55 : 1, font: 'inherit', fontSize: 13 },
+        }, '保存 Qwen 凭据'),
+      ),
       React.createElement('p', { style: { margin: '12px 0 0', fontSize: 12, opacity: .72 } },
         activity,
       ),

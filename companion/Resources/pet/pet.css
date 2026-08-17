@@ -5,6 +5,7 @@
 /* HTML hidden 属性必须压过组件的 display 规则（.input-bar 用了 display:flex 会盖掉 UA 的 [hidden]） */
 .bubble[hidden],
 .input-bar[hidden],
+.input-bar button[hidden],
 .offline-tag[hidden],
 .activity-tag[hidden] {
   display: none !important;
@@ -120,6 +121,10 @@ html, body {
   gap: 8px;
   /* ✕ 按钮占位，正文顶部留出空间 */
   padding-top: 26px;
+  /* 对话内容是阅读区，不应继承页面为拖动桌宠设置的禁选中。 */
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
 }
 
 /* 用户消息：右侧蓝色块 */
@@ -329,6 +334,10 @@ html, body {
   font-size: 14px;
   color: #1a2b4d;
   padding: 4px 6px;
+  /* 允许 Cmd+V / 右键粘贴以及选择已有输入内容。 */
+  user-select: text;
+  -webkit-user-select: text;
+  -webkit-user-modify: read-write-plaintext-only;
 }
 
 .input-bar input::placeholder { color: #9aacc8; }
@@ -344,6 +353,27 @@ html, body {
   cursor: pointer;
   flex-shrink: 0;
 }
+
+.input-bar .capture-btn {
+  background: rgba(77, 107, 254, 0.12);
+  color: #3551c9;
+  font-size: 15px;
+}
+
+.input-bar .capture-btn:hover { background: rgba(77, 107, 254, 0.22); }
+
+.input-bar .capture-btn:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
+.input-bar .pending-capture-btn {
+  background: #2b9b77;
+  color: #fff;
+  font-size: 14px;
+}
+
+.input-bar .pending-capture-btn:hover { background: #217c60; }
 
 .input-bar button:active { transform: scale(0.92); }
 

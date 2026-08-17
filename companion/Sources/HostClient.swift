@@ -38,6 +38,10 @@ final class HostClient: NSObject, URLSessionDataDelegate {
     private var replyText = ""
     private var chatInFlight = false
     private var lastOnline: Bool?
+    // One explicit, user-selected screenshot waits here until the user writes
+    // and sends a question. It is never submitted merely because it was taken.
+    private var pendingVisionImage: Data?
+    private var pendingVisionName: String?
 
     init(homeDir: URL? = nil) {
         if let homeDir {
@@ -245,16 +249,74 @@ final class HostClient: NSObject, URLSessionDataDelegate {
             evalJS("window.petBridge && window.petBridge.renderError(\"\\u0044\\u0053\\u0048 \\u672a\\u8fd0\\u884c\")")
             return
         }
+        startRequest(base: base, path: "/api/pet/chat", body: ["message": text])
+    }
+
+    /// Open the native selector and retain the resulting image locally. The
+    /// follow-up text submission is intentionally a separate user action.
+    func captureForLaterAnalysis() {
+        guard !chatInFlight else { return }
+        guard isEnabled else {
+            evalJS("window.petBridge && window.petBridge.captureFailed(\"\\u684c\\u5ba0\\u5df2\\u5173\\u95ed\")")
+            return
+        }
+        guard baseURL != nil else {
+            evalJS("window.petBridge && window.petBridge.captureFailed(\"DSH \\u672a\\u8fd0\\u884c\")")
+            return
+        }
+        ScreenCapture.captureInteractiveJPEG { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                switch result {
+                case .success(let image):
+                    self.pendingVisionImage = image
+                    self.pendingVisionName = "selected-screenshot.jpg"
+                    self.evalJS("window.petBridge && window.petBridge.captureReady()")
+                case .failure(let error):
+                    self.evalJS("window.petBridge && window.petBridge.captureFailed(\(Self.jsString(error.localizedDescription)))")
+                }
+            }
+        }
+    }
+
+    func sendPendingVision(_ prompt: String) {
+        guard !chatInFlight else { return }
+        guard isEnabled else {
+            evalJS("window.petBridge && window.petBridge.renderError(\"\\u684c\\u5ba0\\u5df2\\u5173\\u95ed\")")
+            return
+        }
+        guard let base = baseURL else {
+            evalJS("window.petBridge && window.petBridge.renderError(\"DSH \\u672a\\u8fd0\\u884c\")")
+            return
+        }
+        guard let image = pendingVisionImage else {
+            evalJS("window.petBridge && window.petBridge.renderError(\"请先选择截图\")")
+            return
+        }
+        pendingVisionImage = nil
+        let name = pendingVisionName ?? "selected-screenshot.jpg"
+        pendingVisionName = nil
+        startRequest(base: base, path: "/api/pet/vision", body: [
+            "data": image.base64EncodedString(),
+            "name": name,
+            "prompt": prompt,
+        ], timeout: 120)
+    }
+
+    func discardPendingVision() {
+        pendingVisionImage = nil
+        pendingVisionName = nil
+    }
+
+    private func startRequest(base: URL, path: String, body: [String: Any], timeout: TimeInterval? = nil) {
         chatInFlight = true
         replyText = ""
         sseBuffer = Data()
-
-        var req = request(base.appendingPathComponent("/api/pet/chat"))
+        var req = request(base.appendingPathComponent(path))
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        let body: [String: Any] = ["message": text]
+        if let timeout { req.timeoutInterval = timeout }
         req.httpBody = try? JSONSerialization.data(withJSONObject: body)
-
         currentTask = chatSession.dataTask(with: req)
         currentTask?.resume()
     }

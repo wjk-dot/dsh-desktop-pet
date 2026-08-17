@@ -17,6 +17,7 @@ DeepSeek Harness（DSH）的桌面伴侣：一只以 DeepSeek 图标为形象的
 - **原生插件配置卡**：在 `设置 → 插件 → 插件配置 → DeepSeek 桌宠` 中调整启用状态、图标尺寸、任务状态显示、动画和自动贴边。
 - **历史迁移**：旧版 `$DSH_HOME/pet-chat.json` 会作为首次原生会话的上下文导入；已有 `桌宠对话记录.md` 保留为旧备份，不再自动生成。
 - **模型跟随全局**：默认使用 DSH 设置的默认模型（provider/model/reasoning），可单独覆盖。
+- **可选截图分析**：从桌宠显式截取主屏，图片作为同一原生 Agent session 的附件保存；配置 Qwen MCP 后可进行 OCR、界面理解与视觉问答。
 
 ## 架构
 
@@ -27,6 +28,7 @@ DeepSeek Harness（DSH）的桌面伴侣：一只以 DeepSeek 图标为形象的
 │         │  HTTP loopback + SSE
 ├─ plugin/     DSH 插件 host 半区（cordis）
 │    ├─ /api/pet/chat     POST → SSE 流式转发原生 Agent session
+│    ├─ /api/pet/vision   POST JPEG → 同一 session 图片附件 + Qwen MCP 指令
 │    ├─ /api/pet/events   原生 session 事件 SSE（支持 after=<seq> 重放）
 │    ├─ /api/pet/history / status / cancel / control / preferences
 │    ├─ /api/pet/bridge   刷新端口桥（实例租约）
@@ -84,8 +86,29 @@ SSE 立即同步到已经运行的原生桌宠，无需重启 companion：
 - `显示任务状态`：显示当前 Agent 的工具执行状态和取消入口；
 - `减少动画`：关闭桌宠的持续动画和过渡；
 - `自动贴边隐藏`：控制拖到屏幕边缘后的自动收起。
+- `启用截图分析`：允许桌宠上的截图按钮提交图片；未配置 Qwen 时仍会保留图片和请求，但 Agent 会明确提示缺少视觉 MCP。
 
 偏好保存在 `$DSH_HOME/pet-preferences.json`，而不是修改 DSH 应用包或受限的通用 settings namespace。
+
+### 可选：Qwen 截图分析
+
+视觉能力不随插件携带任何模型凭据。到阿里云百炼（DashScope）控制台创建 API Key 后，在
+Harness 的 `设置 → 插件 → DeepSeek 桌宠 → Qwen 视觉凭据` 粘贴并保存即可。Key 只会写入
+`$DSH_HOME/pet-qwen-mm.env`，权限为 `0600`，界面只显示末四位。
+
+随后执行：
+
+```sh
+cd plugin
+./install-vision.sh
+```
+
+脚本会安装 `qwen-mm-plugins-api` skill，并打印需要加入当前 DSH profile 的 MCP 配置。
+把 `qwen-vision.patch.yml` 中的条目合并到 profile 的 `cordis.patch.yml` 后重启 Harness。MCP 启动时会读取
+上述桌宠私有配置文件；保存或更换 Key 后同样需要重启 Harness。`uvx`、Qwen 凭据和 MCP 均在本机运行；不要把
+`$DSH_HOME/pet-qwen-mm.env` 提交到仓库。
+
+完成后，在桌宠输入栏点击截图按钮即可截取**主显示器**并携带当前输入框中的问题发送。macOS 会在首次使用时请求“屏幕录制”权限。插件不会后台录屏或定时截图；临时 JPEG 仅供本机 MCP 读取，最多保留 30 分钟。当前 DeepSeek Agent 模型不支持图片输入，因此 Harness 历史会保留截图分析任务、Qwen 工具调用和结果，而不会把 JPEG 作为模型附件提交。
 
 ### 2. 构建伴生应用（macOS）
 

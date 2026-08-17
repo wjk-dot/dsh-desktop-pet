@@ -1,0 +1,13 @@
+# Optional Qwen visual MCP for DeepSeek Harness.
+# Merge this entry into the active DSH profile's cordis.patch.yml, then restart DSH.
+- insert:
+    - id: mcp-qwen-mm-plugins-api
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: qwen-mm-plugins-api
+        transport: stdio
+        command: sh
+        args:
+          - '-lc'
+          - 'export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"; export QWEN_MM_CONFIG="${DSH_HOME:-$HOME/.dsh}/pet-qwen-mm.env"; exec "$HOME/.local/bin/uvx" --from "qwen-mm-plugins[api] @ git+https://github.com/QwenLM/Qwen-MM-Plugins.git@qwen-mm-plugins-api-v1.0.3" qwen-mm-plugins-api'
+        cwd: !!js process.cwd()

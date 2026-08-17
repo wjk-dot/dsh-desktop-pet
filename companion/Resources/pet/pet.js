@@ -18,6 +18,8 @@
   const bubbleClose = document.getElementById('bubbleClose')
   const inputBar = document.getElementById('inputBar')
   const inputText = document.getElementById('inputText')
+  const captureBtn = document.getElementById('captureBtn')
+  const pendingCaptureBtn = document.getElementById('pendingCaptureBtn')
   const sendBtn = document.getElementById('sendBtn')
   const offlineTag = document.getElementById('offlineTag')
   const activityTag = document.getElementById('activityTag')
@@ -28,6 +30,8 @@
 
   let state = 'idle'        // idle | listening | thinking | speaking | offline
   let streaming = false     // 正在等待/接收回复
+  let captureSelecting = false
+  let pendingCapture = false
   let agentWasRunning = false
   let agentActive = false
   let preferences = {
@@ -357,11 +361,26 @@
     streaming = true
     setState('thinking')
     // 追加本轮：用户消息 + 空回复（流式填充）
-    conversation.push({ role: 'user', raw: text })
+    conversation.push({ role: 'user', raw: pendingCapture ? '截图分析：' + text : text })
     conversation.push({ role: 'assistant', raw: '' })
     lastEntryIndex = conversation.length - 1
     showTranscript()
-    post('chat', { text })
+    if (pendingCapture) {
+      pendingCapture = false
+      pendingCaptureBtn.hidden = true
+      inputText.placeholder = '和小鲸鱼说点什么…'
+      post('vision', { prompt: text })
+    } else {
+      post('chat', { text })
+    }
+  }
+
+  function capture() {
+    if (streaming || captureSelecting) return
+    captureSelecting = true
+    captureBtn.disabled = true
+    captureBtn.title = '正在选择截图…'
+    post('capture')
   }
 
   /* ---------- 点击 vs 拖动 vs 滚轮缩放 ---------- */
@@ -421,6 +440,19 @@
   })
 
   sendBtn.addEventListener('click', send)
+  captureBtn.addEventListener('click', function (e) {
+    e.stopPropagation()
+    capture()
+  })
+  pendingCaptureBtn.addEventListener('click', function (e) {
+    e.stopPropagation()
+    if (!pendingCapture || streaming) return
+    pendingCapture = false
+    pendingCaptureBtn.hidden = true
+    inputText.placeholder = '和小鲸鱼说点什么…'
+    post('discardCapture')
+    inputText.focus()
+  })
   cancelBtn.addEventListener('click', function (e) {
     e.stopPropagation()
     if (!streaming) return
@@ -429,13 +461,49 @@
     post('cancel')
   })
   inputText.addEventListener('keydown', function (e) {
-    if (e.key === 'Enter') send()
-    if (e.key === 'Escape') closeInput()
+    // 保留浏览器/系统的 Cmd+C、Cmd+V、Cmd+X 等原生编辑快捷键；仅拦截
+    // 明确用于发送或收起输入框的按键。
+    if (e.key === 'Enter' && !e.isComposing) {
+      e.preventDefault()
+      send()
+    }
+    if (e.key === 'Escape') {
+      e.preventDefault()
+      closeInput()
+    }
   })
 
   /* ---------- 原生壳注入的桥 ---------- */
   window.petBridge = {
     setState: setState,
+
+    /** Native selector completed; wait for a written instruction before upload. */
+    captureReady: function () {
+      captureSelecting = false
+      captureBtn.disabled = false
+      captureBtn.title = '重新选择屏幕区域'
+      pendingCapture = true
+      pendingCaptureBtn.hidden = false
+      inputText.placeholder = '截图已就绪，输入问题后发送…'
+      inputBar.hidden = false
+      if (state !== 'offline') setState('listening')
+      applyLayout()
+      inputText.focus()
+    },
+
+    /** Selection was cancelled or could not be read; no conversation turn was made. */
+    captureFailed: function (message) {
+      captureSelecting = false
+      captureBtn.disabled = false
+      captureBtn.title = '选择屏幕区域'
+      if (message && message !== '已取消截图') {
+        inputText.placeholder = message
+        setTimeout(function () {
+          if (!pendingCapture && inputText.placeholder === message) inputText.placeholder = '和小鲸鱼说点什么…'
+        }, 3000)
+      }
+      inputText.focus()
+    },
 
     /** 恢复持久化的桌宠尺寸（启动时由 Swift 调用）。 */
     setIconSize: function (size) {

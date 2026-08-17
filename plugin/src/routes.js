@@ -15,6 +15,7 @@
 import { json, readJsonBody, requireMethod } from './util.js'
 import { launchCompanion } from './launch.js'
 import { loadPreferences, savePreferences } from './preferences.js'
+import { saveVisionSettings, visionSettingsView } from './vision-settings.js'
 
 /** SSE 单事件帧。 */
 function sse(res, data) {
@@ -140,6 +141,71 @@ export function makePetRoutes({ service, writeBridge, loadEnabled, saveEnabled, 
         } catch (error) {
           json(res, 500, { ok: false, error: error instanceof Error ? error.message : String(error) })
         }
+      },
+    },
+    {
+      kind: 'exact',
+      path: '/api/pet/vision/settings',
+      handler: (req, res) => {
+        if (!validInstance(req, res)) return
+        if (req.method === 'GET') {
+          json(res, 200, { ok: true, settings: visionSettingsView() })
+          return
+        }
+        if (!requireMethod(req, res, 'POST')) return
+        readJsonBody(req).then(
+          (body) => {
+            try {
+              const settings = saveVisionSettings({ apiKey: body.apiKey, model: body.model })
+              json(res, 200, { ok: true, settings })
+            } catch (error) {
+              json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) })
+            }
+          },
+          (error) => json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) }),
+        )
+      },
+    },
+    {
+      kind: 'exact',
+      path: '/api/pet/vision',
+      handler: (req, res) => {
+        if (!validInstance(req, res)) return
+        if (!requireMethod(req, res, 'POST')) return
+        // JPEG screenshots are intentionally larger than normal chat JSON.
+        readJsonBody(req, 9 * 1024 * 1024).then(
+          (body) => {
+            if (typeof body.data !== 'string') {
+              json(res, 400, { ok: false, error: 'missing-image-data' })
+              return
+            }
+            res.writeHead(200, {
+              'content-type': 'text/event-stream; charset=utf-8',
+              'cache-control': 'no-cache', connection: 'keep-alive', 'x-accel-buffering': 'no',
+            })
+            const abort = new AbortController()
+            req.on('close', () => abort.abort())
+            sse(res, { type: 'start' })
+            ;(async () => {
+              try {
+                for await (const event of service.streamVision({
+                  data: body.data,
+                  name: typeof body.name === 'string' ? body.name : undefined,
+                  prompt: typeof body.prompt === 'string' ? body.prompt : undefined,
+                }, abort.signal)) {
+                  if (event.type === 'delta') sse(res, { type: 'delta', text: event.text })
+                  else if (event.type === 'activity') sse(res, { type: 'activity', activity: event.activity })
+                }
+                sse(res, { type: 'done' })
+              } catch (error) {
+                if (!abort.signal.aborted) sse(res, { type: 'error', error: error instanceof Error ? error.message : String(error) })
+              } finally {
+                res.end()
+              }
+            })()
+          },
+          (error) => json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) }),
+        )
       },
     },
     {

@@ -106,6 +106,13 @@ final class PetWebView: WKWebView, WKScriptMessageHandler, WKNavigationDelegate 
         case "chat":
             guard let text = body["text"] as? String else { return }
             host.sendChat(text)
+        case "capture":
+            host.captureForLaterAnalysis()
+        case "vision":
+            guard let prompt = body["prompt"] as? String else { return }
+            host.sendPendingVision(prompt)
+        case "discardCapture":
+            host.discardPendingVision()
         case "drag":
             (window as? PetWindow)?.beginDrag()
         case "cancel":

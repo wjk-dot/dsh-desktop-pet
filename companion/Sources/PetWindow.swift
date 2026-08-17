@@ -60,6 +60,64 @@ final class PetWindow: NSWindow {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
 
+    /// LSUIElement + borderless NSWindow 组合下，WebKit 有时收不到 AppKit 的
+    /// Command 编辑命令。复制等命令仍走 WebKit / responder chain；粘贴文本则
+    /// 从系统剪贴板确定性写入当前 HTML 输入框，避免菜单链路丢失 Cmd+V。
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        guard event.modifierFlags.intersection(.deviceIndependentFlagsMask).contains(.command),
+              let key = event.charactersIgnoringModifiers?.lowercased() else {
+            return super.performKeyEquivalent(with: event)
+        }
+
+        switch key {
+        case "v":
+            if pastePlainTextIntoInput() {
+                return true
+            }
+            if webView.performKeyEquivalent(with: event) {
+                return true
+            }
+            return NSApp.sendAction(#selector(NSText.paste(_:)), to: nil, from: self)
+        case "x":
+            if webView.performKeyEquivalent(with: event) {
+                return true
+            }
+            return NSApp.sendAction(#selector(NSText.cut(_:)), to: nil, from: self)
+        case "c":
+            if webView.performKeyEquivalent(with: event) {
+                return true
+            }
+            return NSApp.sendAction(#selector(NSText.copy(_:)), to: nil, from: self)
+        case "a":
+            if webView.performKeyEquivalent(with: event) {
+                return true
+            }
+            return NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: self)
+        default:
+            return super.performKeyEquivalent(with: event)
+        }
+    }
+
+    private func pastePlainTextIntoInput() -> Bool {
+        guard let text = NSPasteboard.general.string(forType: .string), !text.isEmpty,
+              let data = try? JSONSerialization.data(withJSONObject: text, options: [.fragmentsAllowed]),
+              let json = String(data: data, encoding: .utf8) else {
+            return false
+        }
+        webView.eval("""
+        (function () {
+          var input = document.getElementById('inputText');
+          if (!input || input.closest('[hidden]')) return;
+          input.focus();
+          var start = input.selectionStart == null ? input.value.length : input.selectionStart;
+          var end = input.selectionEnd == null ? input.value.length : input.selectionEnd;
+          input.setRangeText(__PET_CLIPBOARD_TEXT__, start, end, 'end');
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+        })();
+        """.replacingOccurrences(of: "__PET_CLIPBOARD_TEXT__", with: json))
+        return true
+    }
+
     // MARK: - 页面状态推送
 
     func notifyConnection(_ online: Bool) {

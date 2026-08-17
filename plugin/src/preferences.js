@@ -14,6 +14,7 @@ export const DEFAULT_PREFERENCES = Object.freeze({
   showActivity: true,
   reduceMotion: false,
   autoDock: true,
+  visionEnabled: true,
 })
 
 export function preferencesFilePath(dir = dshHome()) {
@@ -35,6 +36,7 @@ export function normalizePreferences(value = {}) {
     showActivity: boolean(input.showActivity, DEFAULT_PREFERENCES.showActivity),
     reduceMotion: boolean(input.reduceMotion, DEFAULT_PREFERENCES.reduceMotion),
     autoDock: boolean(input.autoDock, DEFAULT_PREFERENCES.autoDock),
+    visionEnabled: boolean(input.visionEnabled, DEFAULT_PREFERENCES.visionEnabled),
   }
 }
 
