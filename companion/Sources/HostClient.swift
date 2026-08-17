@@ -84,6 +84,7 @@ final class HostClient: NSObject, URLSessionDataDelegate {
         checkHealth()
         fetchHistory()
         fetchStatus()
+        fetchPreferences()
         connectEvents()
     }
 
@@ -155,6 +156,7 @@ final class HostClient: NSObject, URLSessionDataDelegate {
             }
             fetchHistory()
             fetchStatus()
+            fetchPreferences()
         }
     }
 
@@ -333,6 +335,24 @@ final class HostClient: NSObject, URLSessionDataDelegate {
         }.resume()
     }
 
+    /// 拉取桌宠外观偏好；配置页写入后也由 SSE 推送，无需重启伴生应用。
+    func fetchPreferences() {
+        reloadBridge()
+        guard let base = baseURL else { return }
+        var req = request(base.appendingPathComponent("/api/pet/preferences"))
+        req.timeoutInterval = 3
+        URLSession.shared.dataTask(with: req) { [weak self] data, _, _ in
+            guard let data,
+                  let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let preferences = obj["preferences"],
+                  let json = try? JSONSerialization.data(withJSONObject: preferences),
+                  let script = String(data: json, encoding: .utf8) else { return }
+            DispatchQueue.main.async {
+                self?.evalJS("window.petBridge && window.petBridge.applyPreferences(\(script))")
+            }
+        }.resume()
+    }
+
     private func evalJS(_ script: String) {
         onEval?(script)
     }
@@ -446,6 +466,14 @@ final class HostClient: NSObject, URLSessionDataDelegate {
                 isEnabled = enabled
                 lastEnabled = enabled
                 DispatchQueue.main.async { self.onEnabledChange?(enabled) }
+            }
+            if let type = obj["type"] as? String, type == "preferences",
+               let data = obj["data"] as? [String: Any], let preferences = data["preferences"],
+               let json = try? JSONSerialization.data(withJSONObject: preferences),
+               let script = String(data: json, encoding: .utf8) {
+                DispatchQueue.main.async {
+                    self.evalJS("window.petBridge && window.petBridge.applyPreferences(\(script))")
+                }
             }
             let nativeType = ((obj["data"] as? [String: Any])?["event"] as? [String: Any])?["type"] as? String
             if nativeType == "assistant/chunk" {

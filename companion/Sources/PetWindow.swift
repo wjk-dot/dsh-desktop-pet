@@ -28,6 +28,7 @@ final class PetWindow: NSWindow {
     private var idleTimer: Timer?        // 弹回后的空闲重贴边
     private var lastMouseFar: Date?
     private var layoutCompact = true     // JS 布局消息同步
+    private var autoDockEnabled = true
 
     init(host: HostClient) {
         webView = PetWebView(host: host)
@@ -190,7 +191,7 @@ final class PetWindow: NSWindow {
 
     /// 松手后若窗口贴近屏幕边缘 → 贴边。
     private func maybeDock() {
-        guard layoutCompact, dockEdge == nil,
+        guard autoDockEnabled, layoutCompact, dockEdge == nil,
               let screen = screenContaining() else { return }
         let f = frame
         let sf = screen.frame
@@ -203,6 +204,14 @@ final class PetWindow: NSWindow {
             edge = .bottom
         }
         if let edge { dock(to: edge) }
+    }
+
+    /// 由网页偏好桥更新；关掉自动贴边时，已贴边的窗口立即回到可见区。
+    func applyPreferences(autoDock: Bool) {
+        autoDockEnabled = autoDock
+        if !autoDock, dockEdge != nil {
+            undock()
+        }
     }
 
     private func dock(to edge: DockEdge) {

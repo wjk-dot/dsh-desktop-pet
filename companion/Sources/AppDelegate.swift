@@ -57,13 +57,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         host.start()
 
-        // 恢复持久化的桌宠尺寸（页面加载后注入）
-        let savedIconSize = UserDefaults.standard.double(forKey: "petIconSize")
-        if savedIconSize > 0 {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
-                self?.window?.webView.eval("window.petBridge && window.petBridge.setIconSize(\(savedIconSize))")
-            }
-        }
+        // 外观偏好由 host 的 /api/pet/preferences 统一下发。不要在这里把旧的
+        // UserDefaults 缓存延迟写回页面，否则启动后会覆盖设置页刚保存的图标尺寸。
 
         // 调试模式：--snapshot <path> —— 注入一条长回复并导出渲染快照后退出
         let args = CommandLine.arguments

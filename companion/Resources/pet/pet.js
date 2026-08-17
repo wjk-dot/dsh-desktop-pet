@@ -29,6 +29,12 @@
   let state = 'idle'        // idle | listening | thinking | speaking | offline
   let streaming = false     // 正在等待/接收回复
   let agentWasRunning = false
+  let agentActive = false
+  let preferences = {
+    showActivity: true,
+    reduceMotion: false,
+    autoDock: true,
+  }
 
   /* ---------- 桌宠尺寸（可滚轮缩放，Swift 持久化） ---------- */
 
@@ -39,6 +45,7 @@
 
   /** 应用图标尺寸（桌宠容器、图标、气泡锚点随尺寸联动）。 */
   function applyIconSize() {
+    stage.style.setProperty('--pet-icon-size', iconSize + 'px')
     petEl.style.width = (iconSize + 20) + 'px'
     petEl.style.height = (iconSize + 20) + 'px'
     petIconEl.style.width = iconSize + 'px'
@@ -71,9 +78,22 @@
   }
 
   /* ---------- 状态 ---------- */
+  function refreshStageClass() {
+    stage.className = 'stage'
+      + (state === 'idle' ? '' : ' pet-' + state)
+      + (agentActive ? ' agent-active' : '')
+      + (!preferences.showActivity ? ' hide-activity' : '')
+      + (preferences.reduceMotion ? ' reduce-motion' : '')
+  }
+
   function setState(next) {
     state = next
-    stage.className = 'stage' + (next === 'idle' ? '' : ' pet-' + next)
+    refreshStageClass()
+  }
+
+  function setAgentActive(active) {
+    agentActive = active
+    refreshStageClass()
   }
 
   function post(type, extra) {
@@ -426,6 +446,21 @@
       applyLayout()
     },
 
+    /** 应用 host 偏好，配置页保存后通过 SSE 立即送达。 */
+    applyPreferences: function (next) {
+      if (!next || typeof next !== 'object') return
+      if (typeof next.showActivity === 'boolean') preferences.showActivity = next.showActivity
+      if (typeof next.reduceMotion === 'boolean') preferences.reduceMotion = next.reduceMotion
+      if (typeof next.autoDock === 'boolean') preferences.autoDock = next.autoDock
+      if (Number.isFinite(Number(next.iconSize))) {
+        iconSize = Math.max(ICON_MIN, Math.min(ICON_MAX, Math.round(Number(next.iconSize))))
+        applyIconSize()
+        applyLayout()
+      }
+      refreshStageClass()
+      post('preferences', { autoDock: preferences.autoDock })
+    },
+
     /** 载入 host 端持久化的会话记录（启动时由 Swift 调用，之后 2s 轮询刷新）。 */
     loadHistory: function (turns) {
       if (streaming) return
@@ -471,10 +506,12 @@
     renderActivity: function (activity) {
       if (!activity || typeof activity.name !== 'string') return
       if (activity.state === 'running') {
+        setAgentActive(true)
         activityText.textContent = '正在执行: ' + activity.name
         cancelBtn.disabled = false
         activityTag.hidden = false
       } else if (activity.state === 'error') {
+        setAgentActive(true)
         activityText.textContent = '工具失败: ' + activity.name
         cancelBtn.disabled = false
         activityTag.hidden = false
@@ -487,8 +524,12 @@
       if (status.running && !streaming) {
         streaming = true
         setState('thinking')
+        // 桌面端发起任务时不会走本窗口的 chat 流；显式扩展画布，
+        // 让状态条使用聊天态坐标而不是紧凑图标坐标。
+        applyLayout()
       }
       if (status.running) {
+        setAgentActive(true)
         const tool = status.currentTool || status.lastTool
         activityText.textContent = tool && tool.name ? '正在执行: ' + tool.name : 'Agent 正在执行任务'
         cancelBtn.disabled = false
@@ -498,6 +539,7 @@
         // 原生 turn 结束就是两端共用的完成信号。
         window.petBridge.renderDone()
       } else if (!streaming) {
+        setAgentActive(false)
         activityTag.hidden = true
       }
       agentWasRunning = status.running
@@ -506,6 +548,7 @@
     /** 回复结束：移除光标、说完歇 1.6s 回待机（不自动收起，保留会话面板） */
     renderDone: function () {
       streaming = false
+      setAgentActive(false)
       activityTag.hidden = true
       cancelBtn.disabled = false
       // 移除末尾光标
@@ -517,11 +560,13 @@
       setTimeout(function () {
         if (!streaming && state === 'speaking') setState('idle')
       }, 1600)
+      applyLayout()
     },
 
     /** 出错：以一条临时 assistant 消息呈现，3s 后移除 */
     renderError: function (message) {
       streaming = false
+      setAgentActive(false)
       activityTag.hidden = true
       cancelBtn.disabled = false
       const idx = conversation.push({
@@ -550,6 +595,7 @@
     renderOffline: function () {
       if (state === 'offline') return
       streaming = false
+      setAgentActive(false)
       setState('offline')
       offlineTag.hidden = false
       inputBar.hidden = true

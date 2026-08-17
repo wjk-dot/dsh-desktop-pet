@@ -13,7 +13,9 @@
 .activity-tag {
   position: absolute;
   left: 50%;
-  bottom: 52px;
+  /* 状态条始终位于图标上方。旧值 52px 在紧凑态会落进图标范围，
+     再叠加 .pet 的 z-index 后文字被鲸鱼完全盖住。 */
+  bottom: calc(var(--pet-icon-size, 120px) + 104px);
   transform: translateX(-50%);
   max-width: 310px;
   overflow: hidden;
@@ -29,6 +31,7 @@
   box-shadow: 0 2px 8px rgba(20, 60, 120, 0.16);
   font-size: 12px;
   line-height: 1.2;
+  z-index: 4;
 }
 
 .activity-tag span {
@@ -51,6 +54,16 @@
 }
 
 .activity-tag button:hover { background: rgba(214, 58, 74, 0.24); }
+
+.stage.hide-activity .activity-tag { display: none !important; }
+
+.stage.reduce-motion *,
+.stage.reduce-motion *::before,
+.stage.reduce-motion *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+}
 
 html, body {
   width: 100%;
@@ -91,6 +104,11 @@ html, body {
   box-shadow: 0 4px 18px rgba(20, 60, 120, 0.18);
   transition: width 0.15s ease;
   animation: bubbleIn 0.25s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+
+/* 执行任务时，状态条占据图标正上方；把会话气泡再抬高，三层不互相盖住。 */
+.stage.agent-active .bubble {
+  bottom: calc(var(--pet-icon-size, 120px) + 150px);
 }
 
 /* ---------- 会话记录面板（气泡内） ---------- */

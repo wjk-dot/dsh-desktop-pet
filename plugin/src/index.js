@@ -17,7 +17,7 @@ import { PetEventHub } from './event-hub.js'
 export const name = 'desktop-pet'
 
 /** 依赖服务：web 服务器、原生会话 API、工作区注册表和默认模型。 */
-export const inject = ['webServer', 'llm', 'agentDefaultModel', 'workspaceRegistry', 'apiProxy']
+export const inject = ['webServer', 'llm', 'agentDefaultModel', 'workspaceRegistry', 'apiProxy', 'sessions']
 
 export { defaultCompanionApp, launchCompanion }
 

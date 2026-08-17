@@ -14,6 +14,7 @@
 
 import { json, readJsonBody, requireMethod } from './util.js'
 import { launchCompanion } from './launch.js'
+import { loadPreferences, savePreferences } from './preferences.js'
 
 /** SSE 单事件帧。 */
 function sse(res, data) {
@@ -103,6 +104,26 @@ export function makePetRoutes({ service, writeBridge, loadEnabled, saveEnabled, 
               launchCompanion(companionApp)
             }
             json(res, 200, { ok: true, enabled: body.enabled })
+          },
+          (error) => json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) }),
+        )
+      },
+    },
+    {
+      kind: 'exact',
+      path: '/api/pet/preferences',
+      handler: (req, res) => {
+        if (!validInstance(req, res)) return
+        if (req.method === 'GET') {
+          json(res, 200, { ok: true, preferences: loadPreferences() })
+          return
+        }
+        if (!requireMethod(req, res, 'POST')) return
+        readJsonBody(req).then(
+          (body) => {
+            const preferences = savePreferences(body)
+            eventHub.publish('preferences', { preferences })
+            json(res, 200, { ok: true, preferences })
           },
           (error) => json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) }),
         )

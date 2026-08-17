@@ -13,6 +13,17 @@ import { dshHome } from './dsh-home.js'
 const STATE_FILE = 'pet-native-session.json'
 const TITLE = '桌宠对话'
 
+function freshAgentState() {
+  return {
+    running: false,
+    turn: null,
+    currentTool: null,
+    lastTool: null,
+    lastError: null,
+    updatedAt: new Date().toISOString(),
+  }
+}
+
 function textFromContent(content) {
   if (!Array.isArray(content)) return ''
   return content
@@ -41,14 +52,7 @@ export class PetNativeSession {
     this.legacyHistory = legacyHistory
     this.toolCalls = new Map()
     this.onProjectedEvent = onEvent
-    this.agentState = {
-      running: false,
-      turn: null,
-      currentTool: null,
-      lastTool: null,
-      lastError: null,
-      updatedAt: new Date().toISOString(),
-    }
+    this.agentState = freshAgentState()
     this.eventDisposer = ctx.on('session/event', (session, event) => this.onEvent(session, event))
   }
 
@@ -99,6 +103,30 @@ export class PetNativeSession {
     return this.sessionId
   }
 
+  /**
+   * 桌宠是工作区 Agent 的投影，不是第二个孤立聊天室。
+   * 只接受同 cwd 的顶层会话，避免子代理把桌宠焦点抢走。
+   */
+  isProjectableWorkspaceSession(session) {
+    const workspace = this.workspace()
+    return session?.header?.cwd === workspace.path
+      && Number(session.header.delegationDepth ?? 0) === 0
+  }
+
+  adoptSession(session, source = 'desktop-active') {
+    if (this.sessionId === session.id) return false
+    this.sessionId = session.id
+    this.workspaceId = this.workspace().id
+    this.agentState = freshAgentState()
+    this.toolCalls.clear()
+    this.saveState()
+    this.onProjectedEvent?.({
+      type: 'pet/session-switched',
+      data: { sessionId: session.id, source },
+    }, this.agentState)
+    return true
+  }
+
   async importLegacyHistory() {
     if (this.legacyHistory.length === 0) return
     const transcript = this.legacyHistory
@@ -116,6 +144,9 @@ export class PetNativeSession {
   }
 
   onEvent(session, event) {
+    if (event.type === 'turn/start' && this.isProjectableWorkspaceSession(session)) {
+      this.adoptSession(session)
+    }
     if (session.id !== this.sessionId) return
     this.updateAgentState(event)
     this.onProjectedEvent?.(event, this.agentState)

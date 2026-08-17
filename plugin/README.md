@@ -13,6 +13,8 @@ DeepSeek Harness（DSH）的桌面伴侣：一只以 DeepSeek 图标为形象的
 - **双端连续对话**：桌宠发言与 Harness 界面发言进入同一个 Agent session；两边都能看到记录并继续同一上下文。
 - **事件驱动投影**：`/api/pet/events` 提供带序号和重放窗口的 SSE，桌面端任务不用等历史轮询才出现在桌宠上。
 - **可靠生命周期**：桥文件有 host `instanceId` 和租约，插件 HMR/重启会先撤销上一个 runtime 的路由、订阅和桥所有权。
+- **Codex 风格执行伴侣**：桌宠投影与 Harness 相同的 Agent 执行链；桌面端或桌宠端发起的工具任务都会显示运行状态，并可从桌宠取消。
+- **原生插件配置卡**：在 `设置 → 插件 → 插件配置 → DeepSeek 桌宠` 中调整启用状态、图标尺寸、任务状态显示、动画和自动贴边。
 - **历史迁移**：旧版 `$DSH_HOME/pet-chat.json` 会作为首次原生会话的上下文导入；已有 `桌宠对话记录.md` 保留为旧备份，不再自动生成。
 - **模型跟随全局**：默认使用 DSH 设置的默认模型（provider/model/reasoning），可单独覆盖。
 
@@ -26,7 +28,7 @@ DeepSeek Harness（DSH）的桌面伴侣：一只以 DeepSeek 图标为形象的
 ├─ plugin/     DSH 插件 host 半区（cordis）
 │    ├─ /api/pet/chat     POST → SSE 流式转发原生 Agent session
 │    ├─ /api/pet/events   原生 session 事件 SSE（支持 after=<seq> 重放）
-│    ├─ /api/pet/history / status / cancel / control
+│    ├─ /api/pet/history / status / cancel / control / preferences
 │    ├─ /api/pet/bridge   刷新端口桥（实例租约）
 │    └─ /api/pet/health   健康检查
 └─ $DSH_HOME/pet-bridge.json（端口发现：伴生应用由此找到 host）
@@ -71,6 +73,19 @@ ln -sfn "/Applications/DeepSeek Harness.app/Contents/Resources/host/node_modules
 curl -s http://127.0.0.1:55332/api/pet/health
 # => {"ok":true,...}
 ```
+
+### 3. 配置桌宠
+
+打开 Harness 的 `设置 → 插件 → 插件配置`，展开 `DeepSeek 桌宠`。配置保存后通过
+SSE 立即同步到已经运行的原生桌宠，无需重启 companion：
+
+- `启用桌宠`：隐藏或恢复桌宠窗口，不影响已有 Agent 会话；
+- `图标尺寸`：70 到 200 px；
+- `显示任务状态`：显示当前 Agent 的工具执行状态和取消入口；
+- `减少动画`：关闭桌宠的持续动画和过渡；
+- `自动贴边隐藏`：控制拖到屏幕边缘后的自动收起。
+
+偏好保存在 `$DSH_HOME/pet-preferences.json`，而不是修改 DSH 应用包或受限的通用 settings namespace。
 
 ### 2. 构建伴生应用（macOS）
 

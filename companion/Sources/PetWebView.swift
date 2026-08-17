@@ -42,6 +42,12 @@ final class PetWebView: WKWebView, WKScriptMessageHandler, WKNavigationDelegate 
         loadFileURL(dir.appendingPathComponent("index.html"), allowingReadAccessTo: dir)
     }
 
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        // HostClient may finish its first loopback fetch before pet.js has
+        // installed window.petBridge. Replay preferences once the page is ready.
+        host.fetchPreferences()
+    }
+
     /// 在主线程执行一段 JS（供原生壳推送页面事件）。
     func eval(_ script: String) {
         evaluateJavaScript(script) { _, error in
@@ -115,6 +121,9 @@ final class PetWebView: WKWebView, WKScriptMessageHandler, WKNavigationDelegate 
                 height: CGFloat(height),
                 iconSize: CGFloat(size)
             )
+        case "preferences":
+            let autoDock = body["autoDock"] as? Bool ?? true
+            (window as? PetWindow)?.applyPreferences(autoDock: autoDock)
         default:
             break
         }
