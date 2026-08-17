@@ -1,34 +1,77 @@
-# dsh-desktop-pet
+# DeepSeek Harness Desktop Pet
 
-> DeepSeek Harness 的紧凑 Agent 投影：桌宠与 Harness 左侧的 `桌宠对话` 使用同一条原生 session，可在两端继续同一条执行链。
+> 一个连接到 DeepSeek Harness 原生 Agent 的桌面宠物。它不是第二个聊天机器人：桌宠和 Harness 工作区里的 `桌宠对话` 是同一条完整 Agent 执行链，可在任一端继续对话、使用工具、查看历史或取消任务。
 
-## 功能
+## 它能做什么
 
-- 🐋 **DeepSeek 图标形象**：第一版桌宠即 DeepSeek 官方图标，纯 CSS 动画驱动（待机漂浮 / 聆听摇摆 / 思考光晕 / 说话弹跳 / 离线灰阶）。
-- 💬 **点击即聊**：点桌宠弹出输入框，回车发送；DeepSeek 的回答逐字出现在头顶气泡中（打字机效果）。
-- 📐 **桌面端同款渲染**：气泡用与 DSH 桌面端对齐的渲染栈（Markdown + KaTeX 公式 + highlight.js 代码高亮 + DOMPurify 消毒）——公式、代码块、表格、加粗都正常显示，不再是原始标记。
-- 🪟 **原生悬浮窗口**：Swift + WKWebView 实现，透明、无边框、永远置顶、可拖动、位置记忆；DSH 主窗口关闭（托盘常驻）时桌宠依然在线。
-- 🤖 **完整 Agent 执行链**：通过官方 `apiProxy.sessions` 驱动原生 session，桌宠任务与桌面端共享工具调用、工作区、取消和会话历史。
-- 🔁 **双端连续会话**：桌宠启动后在当前工作区创建或恢复固定的 `桌宠对话` session；左侧工作区栏中可以直接打开、继续和审计它。
-- ⚡ **事件驱动同步**：host 将原生 session 事件投影为可恢复 SSE 流；伴生应用只在事件到达时刷新状态/历史，不再靠高频轮询拖慢开关。
-- 🛡️ **实例租约**：端口桥记录 `instanceId` 和过期时间；重启/HMR 时旧伴生连接不能污染新 host。
-- 🔄 **与 DSH 生命周期联动**：DSH 彻底退出时桌宠一起退出；重新打开时按上次开关状态自动恢复（开启则拉起桌宠、关闭则保持关闭）
-- 🔌 **零配置发现**：插件把监听端口写入 `$DSH_HOME/pet-bridge.json`，伴生应用自动找到 host；DSH 重启换端口也能自愈。
-- 👁️ **可选 Qwen 视觉**：用户点击桌宠截图按钮后，主屏截图交给本机 Qwen MCP 识别；分析任务、工具调用和结果进入同一条 Harness Agent 执行链。
+- 常驻桌面：透明、无边框、置顶的 DeepSeek 图标；点击弹出输入框和对话气泡。
+- 同一条 Agent 会话：桌宠、Harness 左侧工作区的 `桌宠对话`、工具调用、任务状态与取消共用同一个 DSH native session，不复制或分叉上下文。
+- 双端任务投影：无论任务从桌宠还是完整 Harness 发起，宠物都会显示思考/工具状态；长任务可从宠物取消。
+- 富文本气泡：支持 Markdown、代码高亮、表格和 KaTeX 公式；输入框支持系统粘贴，气泡内容可复制。
+- 插件配置：在 Harness 的 `设置 -> 插件 -> DeepSeek 桌宠` 调整启用状态、图标大小、任务状态、动画、贴边和视觉功能。
+- 可选 Qwen 视觉：在 macOS 上可由用户主动框选截图，输入问题后交给本机配置的 Qwen 多模态 MCP 分析；分析过程和结论回到同一 Agent 会话。
 
-## 目录结构
+## 平台状态
 
+| 平台 | 桌宠壳 | 可用能力 | 状态 |
+| --- | --- | --- | --- |
+| macOS 13+ | Swift + AppKit + WKWebView | 悬浮、拖动、菜单栏开关、历史、任务状态、取消、用户框选截图 | 已可用 |
+| Windows 10 1809+ | Tauri 2 + WebView2 | 悬浮、拖动、聊天 SSE、历史、任务状态、取消、粘贴/复制 | 源码 MVP，需在 Windows 构建验证 |
+| Linux | 未提供 | 插件的 `桌宠对话` session 仍可在 Harness 中使用 | 未开始 |
+
+Windows 目前没有发布已签名的安装包。仓库已经包含 MSI/NSIS 的 CI 构建配置，但系统托盘、框选截图、多屏位置恢复和代码签名尚未完成，别把它吹成完整发行版。
+
+## 架构
+
+```text
+DeepSeek Harness host
+  |
+  | Cordis plugin: plugin/
+  | - apiProxy.sessions 驱动唯一 native Agent session
+  | - HTTP loopback: /api/pet/chat, /history, /status, /cancel, /preferences
+  | - SSE: 增量回复、工具状态和可恢复事件流
+  | - $DSH_HOME/pet-bridge.json: 随机端口、instanceId、租约、开关
+  v
+platform companion
+  macOS: Swift/AppKit + WKWebView
+  Windows: Rust/Tauri 2 + WebView2
+  |
+  v
+shared pet web UI
+  HTML/CSS/JS + Markdown + KaTeX + highlight.js + DOMPurify
 ```
-dsh-desktop-pet/
-├── plugin/      # DSH 插件 host 半区（cordis）：chat SSE 通道 + 记忆 + 端口桥
-└── companion/   # Swift 伴生应用：透明置顶窗口 + 宠物页面 + SSE 投影客户端
+
+这里用了几件关键技术：
+
+- **Cordis 的可组合生命周期**：host 路由、会话订阅和桥文件随插件加载/卸载回收，避免 HMR 后出现重复 `/api/pet/*` 路由或陈旧订阅。
+- **DSH `apiProxy.sessions`**：桌宠只投影 Harness 原生 session，因此工具、模型配置、工作区和审批语义保持一致。
+- **Loopback HTTP + SSE**：伴生程序不需要硬编码端口。插件写入带 `instanceId` 和到期时间的桥文件，壳发现服务后用 SSE 接收流式回复和状态事件。
+- **跨平台 UI 复用**：macOS 的 WKWebView 和 Windows 的 Tauri WebView2 装载同一份 `companion/Resources/pet` 页面；平台差异只留在窗口、拖动、截图和 IPC 层。
+- **最小本地边界**：接口只监听 `127.0.0.1`，每次请求携带实例标识；视觉 API Key 只存本机 `$DSH_HOME/pet-qwen-mm.env`，不会进入仓库或上传到桌宠服务。
+
+## 前置条件
+
+1. 已安装并能启动 DeepSeek Harness。
+2. Harness 使用 `web` profile，且系统已有 `pnpm`。下面按源码安装，适用于目前仓库开发版。
+3. 先克隆本仓库：
+
+```sh
+git clone https://github.com/wjk-dot/dsh-desktop-pet.git
+cd dsh-desktop-pet
 ```
 
-## 快速开始
+## 安装插件
 
-### 1. 安装插件（host 半区）
+桌宠壳只负责显示和输入；必须先把 `plugin/` 接入 DSH host。`link:` 适合源码开发，修改插件后不会被 `file:` 复制的旧副本坑到。
 
-把 `plugin/` 加入 dsh profile 依赖，并在 profile 的 `cordis.patch.yml` 追加：
+### macOS
+
+```sh
+cd ~/.dsh/profiles/web
+pnpm add "link:/absolute/path/to/dsh-desktop-pet/plugin"
+```
+
+编辑 `~/.dsh/profiles/web/cordis.patch.yml`，确保只存在一条桌宠 loader：
 
 ```yaml
 - insert:
@@ -36,85 +79,116 @@ dsh-desktop-pet/
       name: '@linxin666/dsh-desktop-pet'
 ```
 
+开发 checkout 位于宿主包外时，还要让 Node 找到 DSH peer dependencies：
+
 ```sh
-cd ~/.dsh/profiles/web
-pnpm add "file:/path/to/dsh-desktop-pet/plugin"
+mkdir -p "/absolute/path/to/dsh-desktop-pet/plugin/node_modules"
+ln -sfn "/Applications/DeepSeek Harness.app/Contents/Resources/host/node_modules/@deepseek-ai" \
+  "/absolute/path/to/dsh-desktop-pet/plugin/node_modules/@deepseek-ai"
 ```
 
-重启 DeepSeek Harness（或等待 patch 热加载），验证：
+重启 Harness。看到 `~/.dsh/pet-bridge.json` 后，插件 host 已经启动。
 
-```sh
-cat ~/.dsh/pet-bridge.json
-curl -s http://127.0.0.1:<port>/api/pet/health   # {"ok":true,"instanceId":"...",...}
+### Windows
+
+在 PowerShell 中将 `<repo>` 换成仓库的绝对路径：
+
+```powershell
+cd "$env:USERPROFILE\.dsh\profiles\web"
+pnpm add "link:<repo>\plugin"
 ```
 
-### 2. 构建并运行桌宠（macOS）
+编辑 `$env:USERPROFILE\.dsh\profiles\web\cordis.patch.yml`，加入且只加入一次：
+
+```yaml
+- insert:
+    - id: desktop-pet
+      name: '@linxin666/dsh-desktop-pet'
+```
+
+重启 Harness 后检查：
+
+```powershell
+Get-Content "$env:USERPROFILE\.dsh\pet-bridge.json"
+```
+
+## 启动桌宠
+
+### macOS
 
 ```sh
-cd companion
-./build.sh          # 产出 build/DeepSeekPet.app
+cd /absolute/path/to/dsh-desktop-pet/companion
+./build.sh
 open build/DeepSeekPet.app
 ```
 
-### 3. 可选安装 Qwen 截图分析
+之后 Harness 启动时会通过桥文件自动恢复已启用的宠物。使用菜单栏的桌宠图标开关显示；网页悬浮开关已移除，避免遮挡 Harness 控件。
 
-视觉功能不打包模型或凭据。到阿里云百炼（DashScope）控制台创建 API Key 后，在 Harness 的
-`设置 → 插件 → DeepSeek 桌宠` 中展开 `Qwen 视觉凭据`，粘贴并保存。Key 仅写入本机
-`$DSH_HOME/pet-qwen-mm.env`（权限 `0600`，界面只显示末四位）。随后运行：
+### Windows
+
+Windows 当前是需要本机构建的 MVP。前置要求：Windows 10 1809+、WebView2 Runtime、Rust stable、Visual Studio 2022 Build Tools 的 **Desktop development with C++** 工作负载。
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+.\companions\windows\build.ps1
+```
+
+生成 MSI/NSIS：
+
+```powershell
+.\companions\windows\build.ps1 -Release
+```
+
+产物位于 `companions/windows/src-tauri/target/release/bundle/`。当前未经代码签名，仅限开发/验收，不应要求普通用户绕过 SmartScreen。
+
+## 日常使用
+
+1. 点击宠物，输入任务，按 Enter 发送。
+2. 到 Harness 左侧工作区打开 `桌宠对话`，可以看到同样的消息、工具调用和执行历史；也可以在这里继续任务。
+3. 任务执行时，气泡会显示当前工具活动；点停止按钮即可请求取消当前原生 turn。
+4. 在 `设置 -> 插件 -> DeepSeek 桌宠` 调整图标和行为。配置写入 `$DSH_HOME/pet-preferences.json`。
+5. macOS 使用截图：点截图按钮，拖拽框选区域，完成截图后在输入框写清楚问题，再发送。它不会后台录屏。
+
+## 可选：Qwen 截图分析
+
+DeepSeek 当前会话模型本身不需要原生视觉输入。该功能将用户主动选取的 JPEG 交给本地 Qwen 多模态 MCP，随后让同一 DSH Agent 根据视觉结果继续工作。
+
+1. 到阿里云百炼 DashScope 控制台创建 API Key。
+2. 在 Harness 的 `设置 -> 插件 -> DeepSeek 桌宠 -> Qwen 视觉凭据` 填入 Key。设置卡提供跳转链接；界面只显示末四位。
+3. 安装视觉 skill：
 
 ```sh
 cd plugin
 ./install-vision.sh
 ```
 
-将脚本输出的 `qwen-vision.patch.yml` 条目合并到当前 profile 的 `cordis.patch.yml`，然后重启 Harness；保存或更换 Key 后也需要重启一次。
-首次在桌宠输入栏点击截图按钮时，macOS 会请求“屏幕录制”权限。不会后台录屏；截图仅在用户点击后生成，临时 MCP 输入最多保留 30 分钟。完整步骤见 [plugin/README.md](plugin/README.md#可选qwen-截图分析)。
+4. 将脚本输出的 `qwen-vision.patch.yml` 条目合并到当前 profile 的 `cordis.patch.yml`，然后重启 Harness。
 
-## 对话 API
+macOS 首次截图会请求“屏幕录制”权限。Windows 框选截图尚未接入，因此请暂时从 Harness 桌面端使用视觉工作流。API Key 和临时图像都保留在本机，不要提交 `$DSH_HOME/pet-qwen-mm.env`。
 
-```sh
-curl -N -X POST http://127.0.0.1:<port>/api/pet/chat \
-  -H 'content-type: application/json' \
-  -d '{"message":"你好呀"}'
-# data: {"type":"start"}
-# data: {"type":"delta","text":"你好！"} ...
-# data: {"type":"done"}
-```
-
-## 原理
-
-```
-桌面
-├─ companion/（Swift 置顶小窗 + WKWebView）
-│    └─ DeepSeek 图标 + CSS 动画 + 气泡 + 输入框
-│         │  HTTP loopback + SSE 流式
-├─ plugin/（cordis host 半区，随 DSH 运行）
-│    ├─ /api/pet/chat   POST → apiProxy 原生 Agent session → SSE 逐字
-│    ├─ /api/pet/vision POST JPEG → 本机 Qwen MCP 图像路径 + 原生 session 文本任务
-│    ├─ /api/pet/events GET  → session/event 投影 + 有界重放
-│    ├─ /api/pet/history / status / cancel / control
-│    └─ $DSH_HOME/pet-bridge.json（端口 + instanceId + 租约）
-```
-
-- `桌宠对话` 是唯一事实来源；不要将其替换为另一个独立的 LLM 聊天记录。
-- 桌宠可执行普通 Agent 任务；权限确认和高风险操作仍回到完整 Harness 界面处理。
-- 网页内悬浮开关已移除，避免遮挡 Harness 原生控件；使用 macOS 菜单栏桌宠图标的开关。
-- DSH 桌面应用关窗仅隐藏主窗口，host 子进程持续运行 → 桌宠不受影响。
-
-## 开发
+## 验证与排障
 
 ```sh
-node --check plugin/src/*.js     # 插件语法检查（纯 ESM JS，无构建）
-cd companion && swift build      # 伴生应用调试构建
+cat ~/.dsh/pet-bridge.json
+curl -s http://127.0.0.1:<port>/api/pet/health
 ```
 
-## 路线图
+- `duplicate exact route "/api/pet/control"`：同一 profile 装载了两个 `desktop-pet` 条目或旧插件副本。保留一个 loader，执行 `pnpm why @linxin666/dsh-desktop-pet` 后清掉重复项，再重启 Harness。
+- 宠物显示离屏：macOS 版已有可见区域兜底。先关闭并重新启动 companion；若仍异常，删除 `$DSH_HOME` 中保存的桌宠窗口位置后再启动。
+- Windows 无法连接：先确认 `%USERPROFILE%\.dsh\pet-bridge.json` 存在且 `expiresAt` 未过期，再确认 Harness 和 Tauri companion 由同一用户启动。
+- 看不到桌宠消息：在工作区打开 `桌宠对话`。这是唯一事实来源，桌宠不会维护另一份独立聊天记录。
 
-- [x] MVP：原生 session + Swift 置顶窗口 + 气泡对话 + 双端历史
-- [x] Cordis 生命周期/事件升级：实例租约、HMR 清理、SSE 投影
-- [ ] 形象系统：换肤/自定义宠物（pet.json 已预留抽象）
-- [ ] 语音输入、开机自启、多屏记忆
-- [ ] 完整会话跳转、任务摘要与审批回到桌面端的 handoff
+## 开发与发布
+
+```sh
+node --check plugin/src/*.js
+node --check companion/Resources/pet/pet.js
+cd companion && swift build
+```
+
+Windows GitHub Actions 工作流位于 [`.github/workflows/windows-companion.yml`](.github/workflows/windows-companion.yml)。手动触发它，或推送 `windows-v*` tag，CI 会在 Windows runner 构建 MSI 和 NSIS artifact。发布前仍要做 Windows 实机验证和 Authenticode 签名。
+
+详细跨平台计划见 [docs/plans/2026-08-17-cross-platform-release.md](docs/plans/2026-08-17-cross-platform-release.md)，插件专用说明见 [plugin/README.md](plugin/README.md)。
 
 ## License
 

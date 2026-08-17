@@ -120,6 +120,19 @@ xcodebuild -project DeepSeekPet.xcodeproj -scheme DeepSeekPet build
 
 双击运行，桌宠出现在屏幕右下角。开关使用 macOS 菜单栏桌宠图标，不向 Harness 页面注入可能遮挡原生控件的悬浮按钮。
 
+## 平台支持与发布状态
+
+当前 macOS 版为 **macOS 13+** Swift/AppKit 应用。Windows companion 已以 Tauri 2 源码
+落地在 [`companions/windows`](../companions/windows)：它与 macOS 一样使用同一个 bridge 和
+`桌宠对话` 原生 session，不能也不需要复制 macOS `DeepSeekPet.app`。在 Windows checkout
+运行 `./companions/windows/build.ps1` 进入开发模式，或传 `-Release` 构建 MSI/NSIS；公开安装
+包在 Windows CI 实构和代码签名完成前不宣称已发布。Linux companion 仍未实现。
+
+跨平台发布将保持同一 `/api/pet/*` 与 SSE 协议，因此 Windows/Linux 版本会继续当前
+`桌宠对话` 原生 session，不会分裂出另一条聊天记录。实施顺序、平台能力矩阵、签名和
+release 安装方案见仓库根目录的
+[`docs/plans/2026-08-17-cross-platform-release.md`](../docs/plans/2026-08-17-cross-platform-release.md)。
+
 ## 对话 API
 
 ```sh

@@ -1,6 +1,6 @@
 /* DeepSeek 桌宠页面逻辑：状态机 + 会话记录面板 + 输入框 + 拖动判定。
  * 与原生壳的契约：
- *   JS → Swift: window.webkit.messageHandlers.pet.postMessage({type, ...})
+ *   JS → native: WebKit message handler（macOS）或 Tauri IPC（Windows）
  *     - {type:'chat', text}   发送一条对话
  *     - {type:'drag'}         进入拖动模式（原生壳接管窗口移动）
  *   Swift → JS: window.petBridge.* 注入方法（由原生壳 evaluateJavaScript 调用）
@@ -104,6 +104,14 @@
     const msg = Object.assign({ type }, extra || {})
     if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.pet) {
       window.webkit.messageHandlers.pet.postMessage(msg)
+      return
+    }
+    // Tauri 2 companion. `withGlobalTauri` exposes this API without adding a
+    // separate frontend bundler, keeping the pet page shared with the macOS shell.
+    if (window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke) {
+      window.__TAURI__.core.invoke('pet_message', { message: msg }).catch(function (error) {
+        console.error('pet native message failed', error)
+      })
     }
   }
 
@@ -706,6 +714,20 @@
     debugDump: function () {
       document.title = 'PET_DUMP:' + (transcript.innerText || '').slice(0, 600)
     },
+  }
+
+  // Tauri emits the same bridge calls that Swift currently injects through
+  // evaluateJavaScript. Keep this mapping explicit so the desktop protocol is
+  // auditable and an unexpected native event cannot execute arbitrary JS.
+  if (window.__TAURI__ && window.__TAURI__.event && window.__TAURI__.event.listen) {
+    window.__TAURI__.event.listen('pet:bridge', function (event) {
+      const payload = event && event.payload
+      if (!payload || typeof payload.method !== 'string') return
+      const fn = window.petBridge[payload.method]
+      if (typeof fn === 'function') fn.apply(null, Array.isArray(payload.args) ? payload.args : [])
+    }).catch(function (error) {
+      console.error('pet bridge listener failed', error)
+    })
   }
 
   /* 初始化渲染栈（失败自动回落纯文本），应用尺寸并切到紧凑布局，先待机 */

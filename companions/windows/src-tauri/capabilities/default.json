@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Main DeepSeek Pet window",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}
