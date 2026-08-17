@@ -32,11 +32,31 @@ jobs:
       - name: Install Tauri CLI
         run: cargo install tauri-cli --version "^2" --locked
       - name: Build NSIS installer
-        run: cargo tauri build --bundles nsis
+        id: build
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path ..\ci-logs | Out-Null
+          $ErrorActionPreference = 'Continue'
+          & cargo tauri build --bundles nsis --verbose *>&1 |
+            Tee-Object -FilePath ..\ci-logs\tauri-build.log
+          exit $LASTEXITCODE
       - name: Upload installers
+        if: steps.build.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: DeepSeekPet-Windows
           path: |
             companions/windows/src-tauri/target/release/bundle/nsis/*.exe
           if-no-files-found: error
+      - name: Upload build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: DeepSeekPet-Windows-build-log
+          path: companions/windows/ci-logs/tauri-build.log
+          if-no-files-found: warn
+      - name: Fail when packaging failed
+        if: steps.build.outcome != 'success'
+        shell: pwsh
+        run: exit 1
