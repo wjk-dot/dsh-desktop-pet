@@ -133,13 +133,18 @@ Set-ExecutionPolicy -Scope Process Bypass
 .\companions\windows\build.ps1
 ```
 
-生成 MSI/NSIS：
+生成 release 安装器：
 
 ```powershell
 .\companions\windows\build.ps1 -Release
 ```
 
-产物位于 `companions/windows/src-tauri/target/release/bundle/`。当前未经代码签名，仅限开发/验收，不应要求普通用户绕过 SmartScreen。
+产物位于 `companions/windows/src-tauri/target/release/bundle/`。CI 默认生成 NSIS `.exe`；MSI 需要本机 WiX 工具链。当前未经代码签名，仅限开发/验收，不应要求普通用户绕过 SmartScreen。
+
+如果使用 GitHub Actions 构建，必须进入运行详情确认 `Build NSIS installer` 和
+`Upload installers` 都是绿色，并且页面底部出现 `DeepSeekPet-Windows` artifact。
+只有看到这个 artifact，才代表 Windows 安装器真的生成了。若 Actions 里显示
+`Failure` 且 `Artifacts` 为 `-`，那不是桌宠运行失败，而是安装包构建失败。
 
 ## 日常使用
 
@@ -176,6 +181,20 @@ curl -s http://127.0.0.1:<port>/api/pet/health
 - `duplicate exact route "/api/pet/control"`：同一 profile 装载了两个 `desktop-pet` 条目或旧插件副本。保留一个 loader，执行 `pnpm why @linxin666/dsh-desktop-pet` 后清掉重复项，再重启 Harness。
 - 宠物显示离屏：macOS 版已有可见区域兜底。先关闭并重新启动 companion；若仍异常，删除 `$DSH_HOME` 中保存的桌宠窗口位置后再启动。
 - Windows 无法连接：先确认 `%USERPROFILE%\.dsh\pet-bridge.json` 存在且 `expiresAt` 未过期，再确认 Harness 和 Tauri companion 由同一用户启动。
+- Windows 安装后看不到桌宠：先确认 Actions 下载的是成功 artifact 里的 NSIS 安装器，
+  再用 PowerShell 检查：
+
+```powershell
+Get-Content "$env:USERPROFILE\.dsh\pet-bridge.json"
+Get-Content "$env:USERPROFILE\.dsh\pet-desktop.json"
+Get-Process DeepSeekPet -ErrorAction SilentlyContinue
+Test-Path "$env:LOCALAPPDATA\DeepSeekPet\DeepSeekPet.exe"
+Test-Path "$env:LOCALAPPDATA\Programs\DeepSeekPet\DeepSeekPet.exe"
+Test-Path "$env:ProgramFiles\DeepSeekPet\DeepSeekPet.exe"
+```
+
+  `pet-desktop.json` 里的 `enabled` 必须为 `true`；如果进程不存在，说明 companion
+  没有被启动；如果桥文件不存在，说明 DSH 插件没有在 Windows profile 中加载成功。
 - 看不到桌宠消息：在工作区打开 `桌宠对话`。这是唯一事实来源，桌宠不会维护另一份独立聊天记录。
 
 ## 开发与发布

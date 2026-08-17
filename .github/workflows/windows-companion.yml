@@ -3,8 +3,15 @@ name: Build Windows companion
 on:
   workflow_dispatch:
   push:
+    branches:
+      - main
     tags:
       - 'windows-v*'
+    paths:
+      - '.github/workflows/windows-companion.yml'
+      - 'companion/Resources/pet/**'
+      - 'companions/windows/**'
+      - 'plugin/src/launch.js'
 
 permissions:
   contents: read
@@ -24,13 +31,12 @@ jobs:
           workspaces: companions/windows/src-tauri -> target
       - name: Install Tauri CLI
         run: cargo install tauri-cli --version "^2" --locked
-      - name: Build MSI and NSIS installer
-        run: cargo tauri build
+      - name: Build NSIS installer
+        run: cargo tauri build --bundles nsis
       - name: Upload installers
         uses: actions/upload-artifact@v4
         with:
           name: DeepSeekPet-Windows
           path: |
-            companions/windows/src-tauri/target/release/bundle/msi/*.msi
             companions/windows/src-tauri/target/release/bundle/nsis/*.exe
           if-no-files-found: error
