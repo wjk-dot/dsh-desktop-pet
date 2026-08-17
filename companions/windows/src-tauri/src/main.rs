@@ -43,7 +43,7 @@ enum PetMessage {
     Preferences { auto_dock: bool },
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 struct BridgeEvent<'a> {
     method: &'a str,
     args: Vec<Value>,
