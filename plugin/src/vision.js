@@ -7,6 +7,7 @@
 import { mkdir, readdir, rm, writeFile } from 'node:fs/promises'
 import { existsSync, readdirSync } from 'node:fs'
 import { delimiter, join } from 'node:path'
+import { homedir } from 'node:os'
 import { randomUUID } from 'node:crypto'
 import { dshHome } from './dsh-home.js'
 import { visionSettingsView } from './vision-settings.js'
@@ -29,7 +30,7 @@ function qwenConfigPresent() {
 function commandAvailable(command) {
   // Apps launched by Finder or the Windows shell may omit user-local bins from
   // PATH even though the MCP's explicit command can resolve them.
-  const home = process.env.HOME || process.env.USERPROFILE || ''
+  const home = process.env.HOME || process.env.USERPROFILE || homedir()
   const localAppData = process.env.LOCALAPPDATA || ''
   const appData = process.env.APPDATA || ''
   const directories = [
