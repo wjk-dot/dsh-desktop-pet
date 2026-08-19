@@ -56,6 +56,7 @@ struct AppState {
     chat_open: Mutex<bool>,
     docked: Mutex<bool>,
     restore_position: Mutex<Option<(i32, i32)>>,
+    recovery_hold: Mutex<bool>,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize)]
@@ -216,6 +217,7 @@ async fn auto_dock_monitor(app: AppHandle, state: Arc<AppState>) {
             let auto_dock = *state.auto_dock.lock().await;
             let chat_open = *state.chat_open.lock().await;
             let is_docked = *state.docked.lock().await;
+            let recovery_hold = *state.recovery_hold.lock().await;
 
             if (!auto_dock || chat_open) && is_docked {
                 if let Some((x, y)) = state.restore_position.lock().await.take() {
@@ -267,6 +269,14 @@ async fn auto_dock_monitor(app: AppHandle, state: Arc<AppState>) {
                             && cursor.x < x + width
                             && cursor.y >= y
                             && cursor.y < y + height;
+                        let near_edge = cursor.x <= left + RECOVERY_STRIP
+                            || cursor.x >= right - RECOVERY_STRIP
+                            || cursor.y <= top + RECOVERY_STRIP
+                            || cursor.y >= bottom - RECOVERY_STRIP;
+
+                        if recovery_hold && !near_edge {
+                            *state.recovery_hold.lock().await = false;
+                        }
 
                         if is_docked {
                             if in_window {
@@ -278,8 +288,9 @@ async fn auto_dock_monitor(app: AppHandle, state: Arc<AppState>) {
                                     ));
                                 }
                                 *state.docked.lock().await = false;
+                                *state.recovery_hold.lock().await = true;
                             }
-                        } else if !in_window {
+                        } else if !in_window && !recovery_hold {
                             let edge = if x <= left + EDGE_THRESHOLD {
                                 Some((left - width + RECOVERY_STRIP, y))
                             } else if x + width >= right - EDGE_THRESHOLD {
@@ -736,6 +747,7 @@ fn main() {
         chat_open: Mutex::new(false),
         docked: Mutex::new(false),
         restore_position: Mutex::new(None),
+        recovery_hold: Mutex::new(false),
     });
     tauri::Builder::default()
         .manage(state.clone())
