@@ -15,7 +15,7 @@ use std::{
     io::Cursor,
     path::PathBuf,
     sync::Arc,
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 use tauri::{AppHandle, Emitter, Manager, State, WebviewWindow};
 use tokio::sync::Mutex;
@@ -25,8 +25,9 @@ use windows_sys::Win32::{
     UI::Input::KeyboardAndMouse::GetAsyncKeyState,
     UI::WindowsAndMessaging::{
         CallWindowProcW, DefWindowProcW, GetCursorPos, GetSystemMetrics, GetWindowLongPtrW,
-        GetWindowRect, SetWindowLongPtrW, GWLP_WNDPROC, HTTRANSPARENT, SM_CXVIRTUALSCREEN,
-        SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, WM_MOVING, WM_NCHITTEST,
+        GetWindowRect, SetWindowLongPtrW, SetWindowPos, GWLP_WNDPROC, HTTRANSPARENT,
+        SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN,
+        SWP_NOACTIVATE, SWP_NOSIZE, SWP_NOZORDER, WM_MOVING, WM_NCHITTEST,
     },
 };
 
@@ -55,7 +56,7 @@ struct AppState {
     chat_open: Mutex<bool>,
     docked: Mutex<bool>,
     restore_position: Mutex<Option<(i32, i32)>>,
-    recovery_hold: Mutex<bool>,
+    recovery_hold_until: Mutex<Option<Instant>>,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize)]
@@ -210,19 +211,23 @@ async fn bridge_monitor(app: AppHandle, state: Arc<AppState>) {
 async fn auto_dock_monitor(app: AppHandle, state: Arc<AppState>) {
     const EDGE_THRESHOLD: i32 = 32;
     const RECOVERY_STRIP: i32 = 24;
+    const RECOVERY_HOLD: Duration = Duration::from_millis(900);
 
     loop {
         if let Some(window) = app.get_webview_window("main") {
             let auto_dock = *state.auto_dock.lock().await;
             let chat_open = *state.chat_open.lock().await;
             let is_docked = *state.docked.lock().await;
-            let recovery_hold = *state.recovery_hold.lock().await;
+            let recovery_hold = state
+                .recovery_hold_until
+                .lock()
+                .await
+                .map(|until| until > Instant::now())
+                .unwrap_or(false);
 
             if (!auto_dock || chat_open) && is_docked {
                 if let Some((x, y)) = state.restore_position.lock().await.take() {
-                    let _ = window.set_position(tauri::Position::Physical(
-                        tauri::PhysicalPosition::new(x, y),
-                    ));
+                    set_native_window_position(&window, x, y);
                 }
                 *state.docked.lock().await = false;
             } else if auto_dock && !chat_open {
@@ -268,26 +273,16 @@ async fn auto_dock_monitor(app: AppHandle, state: Arc<AppState>) {
                             && cursor.x < x + width
                             && cursor.y >= y
                             && cursor.y < y + height;
-                        let near_edge = cursor.x <= left + RECOVERY_STRIP
-                            || cursor.x >= right - RECOVERY_STRIP
-                            || cursor.y <= top + RECOVERY_STRIP
-                            || cursor.y >= bottom - RECOVERY_STRIP;
-
-                        if recovery_hold && !near_edge {
-                            *state.recovery_hold.lock().await = false;
-                        }
-
                         if is_docked {
                             if in_window {
                                 if let Some((restore_x, restore_y)) =
                                     state.restore_position.lock().await.take()
                                 {
-                                    let _ = window.set_position(tauri::Position::Physical(
-                                        tauri::PhysicalPosition::new(restore_x, restore_y),
-                                    ));
+                                    set_native_window_position(&window, restore_x, restore_y);
                                 }
                                 *state.docked.lock().await = false;
-                                *state.recovery_hold.lock().await = true;
+                                *state.recovery_hold_until.lock().await =
+                                    Some(Instant::now() + RECOVERY_HOLD);
                             }
                         } else if !in_window && !recovery_hold {
                             let edge = if x <= left + EDGE_THRESHOLD {
@@ -303,9 +298,7 @@ async fn auto_dock_monitor(app: AppHandle, state: Arc<AppState>) {
                             };
                             if let Some(target) = edge {
                                 *state.restore_position.lock().await = Some((x, y));
-                                let _ = window.set_position(tauri::Position::Physical(
-                                    tauri::PhysicalPosition::new(target.0, target.1),
-                                ));
+                                set_native_window_position(&window, target.0, target.1);
                                 *state.docked.lock().await = true;
                             }
                         }
@@ -434,6 +427,25 @@ fn capture_screen_region(x: i32, y: i32, width: u32, height: u32) -> Result<Vec<
         return Err("截图压缩后仍超过大小限制".into());
     }
     Ok(bytes)
+}
+
+#[cfg(target_os = "windows")]
+fn set_native_window_position(window: &WebviewWindow, x: i32, y: i32) -> bool {
+    let Ok(raw) = window.hwnd() else {
+        return false;
+    };
+    let hwnd: HWND = raw.0 as _;
+    unsafe {
+        SetWindowPos(
+            hwnd,
+            std::ptr::null_mut(),
+            x,
+            y,
+            0,
+            0,
+            SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE,
+        ) != 0
+    }
 }
 
 #[cfg(target_os = "windows")]
@@ -717,6 +729,11 @@ async fn pet_message(
                 )))
                 .map_err(|error| error.to_string())?;
             if let Some(position) = anchored_position {
+                #[cfg(target_os = "windows")]
+                {
+                    set_native_window_position(&window, position.x, position.y);
+                }
+                #[cfg(not(target_os = "windows"))]
                 window
                     .set_position(tauri::Position::Physical(position))
                     .map_err(|error| error.to_string())?;
@@ -748,7 +765,7 @@ fn main() {
         chat_open: Mutex::new(false),
         docked: Mutex::new(false),
         restore_position: Mutex::new(None),
-        recovery_hold: Mutex::new(false),
+        recovery_hold_until: Mutex::new(None),
     });
     tauri::Builder::default()
         .manage(state.clone())
