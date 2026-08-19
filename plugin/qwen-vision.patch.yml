@@ -15,4 +15,5 @@
           - qwen-mm-plugins-api
         env:
           QWEN_MM_CONFIG: !!js require('node:path').join(process.env.DSH_HOME || require('node:path').join(require('node:os').homedir(), '.dsh'), 'pet-qwen-mm.env')
+          PATH: !!js [process.env.PATH, require('node:path').join(require('node:os').homedir(), '.local', 'bin'), require('node:path').join(require('node:os').homedir(), 'AppData', 'Roaming', 'Python', 'Python312', 'Scripts')].filter(Boolean).join(require('node:path').delimiter)
         cwd: !!js process.cwd()

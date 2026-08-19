@@ -35,6 +35,11 @@ function commandAvailable(command) {
   const directories = [
     ...(process.env.PATH ?? '').split(delimiter),
     join(home, '.local', 'bin'),
+    // GUI-launched Windows processes can omit the user PATH entirely. Keep
+    // the standard per-user Python scripts location discoverable from
+    // USERPROFILE as well as from APPDATA.
+    join(home, 'AppData', 'Roaming', 'Python'),
+    join(home, 'AppData', 'Local', 'Programs', 'Python'),
     join(localAppData, 'Programs', 'Python'),
     '/opt/homebrew/bin',
     '/usr/local/bin',
