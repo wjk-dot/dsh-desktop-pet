@@ -5,8 +5,8 @@
  */
 
 import { mkdir, readdir, rm, writeFile } from 'node:fs/promises'
-import { accessSync, constants } from 'node:fs'
-import { join } from 'node:path'
+import { existsSync, readdirSync } from 'node:fs'
+import { delimiter, join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { dshHome } from './dsh-home.js'
 import { visionSettingsView } from './vision-settings.js'
@@ -27,22 +27,33 @@ function qwenConfigPresent() {
 }
 
 function commandAvailable(command) {
-  // Apps launched by macOS Finder often omit user-local bins from PATH even
-  // though the MCP's explicit shell command can resolve them.
-  const path = [
-    process.env.PATH ?? '',
-    join(process.env.HOME ?? '', '.local', 'bin'),
+  // Apps launched by Finder or the Windows shell may omit user-local bins from
+  // PATH even though the MCP's explicit command can resolve them.
+  const home = process.env.HOME || process.env.USERPROFILE || ''
+  const localAppData = process.env.LOCALAPPDATA || ''
+  const appData = process.env.APPDATA || ''
+  const directories = [
+    ...(process.env.PATH ?? '').split(delimiter),
+    join(home, '.local', 'bin'),
+    join(localAppData, 'Programs', 'Python'),
     '/opt/homebrew/bin',
     '/usr/local/bin',
-  ].filter(Boolean).join(':')
-  return path.split(':').some((dir) => {
+  ].filter(Boolean)
+  if (process.platform === 'win32' && appData) {
     try {
-      accessSync(join(dir, command), constants.X_OK)
-      return true
+      for (const entry of readdirSync(join(appData, 'Python'), { withFileTypes: true })) {
+        if (entry.isDirectory() && /^Python\d+$/i.test(entry.name)) {
+          directories.push(join(appData, 'Python', entry.name, 'Scripts'))
+        }
+      }
     } catch {
-      return false
+      // The user-local Python directory is optional; PATH remains authoritative.
     }
-  })
+  }
+  const names = process.platform === 'win32'
+    ? [command, `${command}.exe`, `${command}.cmd`, `${command}.bat`]
+    : [command]
+  return directories.some((dir) => names.some((name) => existsSync(join(dir, name))))
 }
 
 export function visionStatus(preferences) {

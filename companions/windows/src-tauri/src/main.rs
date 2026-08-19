@@ -25,9 +25,8 @@ use windows_sys::Win32::{
     UI::Input::KeyboardAndMouse::GetAsyncKeyState,
     UI::WindowsAndMessaging::{
         CallWindowProcW, DefWindowProcW, GetCursorPos, GetSystemMetrics, GetWindowLongPtrW,
-        GetWindowRect, SetWindowLongPtrW, GWLP_WNDPROC, HTCAPTION, HTTRANSPARENT,
-        SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, WM_MOVING,
-        WM_NCHITTEST,
+        GetWindowRect, SetWindowLongPtrW, GWLP_WNDPROC, HTTRANSPARENT, SM_CXVIRTUALSCREEN,
+        SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, WM_MOVING, WM_NCHITTEST,
     },
 };
 
@@ -497,12 +496,6 @@ unsafe extern "system" fn pet_wnd_proc(
             || (at_bottom_edge
                 && screen_y >= virtual_bottom - recovery_strip
                 && screen_y < virtual_bottom);
-        // The recovery strip must win over frontend hit regions. When the
-        // window is partly off-screen, the pet can cover the entire visible
-        // strip and otherwise make the window impossible to drag back.
-        if in_visible_edge {
-            return HTCAPTION as LRESULT;
-        }
         let regions = HIT_REGIONS
             .get()
             .map(|r| r.lock().unwrap().clone())
@@ -515,6 +508,14 @@ unsafe extern "system" fn pet_wnd_proc(
             {
                 return DefWindowProcW(hwnd, message, wparam, lparam);
             }
+        }
+        // Keep the whole visible recovery strip client-hit-tested. Returning
+        // HTCAPTION here makes Windows start an OS drag before pet.js sees
+        // mousedown, which makes an edge click look like the pet is fleeing.
+        // pet.js already distinguishes click from drag and calls
+        // start_dragging after the pointer has moved far enough.
+        if in_visible_edge {
+            return DefWindowProcW(hwnd, message, wparam, lparam);
         }
         return HTTRANSPARENT as LRESULT;
     }

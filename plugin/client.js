@@ -148,11 +148,15 @@ window.__ModuleLoader__.load({
         : '空闲，已连接到同一条 Agent 执行链'
       const visionSummary = !vision
         ? '正在检测 Qwen 视觉能力…'
-        : vision.preflightReady
-          ? '本机视觉环境预检通过；重启后的 Harness 会启动 Qwen MCP。'
-          : vision.enabled
-            ? '截图已启用；还需安装 Qwen MCP 并在本机配置 DashScope 凭据。'
-            : '截图分析已关闭。'
+        : !vision.enabled
+          ? '截图分析已关闭。'
+          : !vision.qwenConfigured
+            ? '未检测到 DashScope 凭据；请配置 Qwen 视觉凭据。'
+            : !vision.uvxAvailable
+              ? '已检测到视觉凭据，但未找到 uvx；请安装 uv 后重启 Harness。'
+              : vision.preflightReady
+                ? '本机视觉环境预检通过；重启后的 Harness 会启动 Qwen MCP。'
+                : '视觉凭据已配置；请重启 Harness 让 MCP 生效。'
       const summary = loading
         ? '正在读取桌宠状态…'
         : `${enabled ? '已启用' : '已关闭'} · ${activity}`

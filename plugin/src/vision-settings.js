@@ -4,7 +4,7 @@
  * lands in a project, a profile patch, or the browser-visible config response.
  */
 
-import { chmodSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { dshHome } from './dsh-home.js'
 
@@ -23,14 +23,38 @@ function parseConfig(text) {
   return values
 }
 
-function readConfig(dir = dshHome()) {
+function readConfigFile(file) {
   try {
-    return parseConfig(readFileSync(visionSettingsPath(dir), 'utf8'))
+    return parseConfig(readFileSync(file, 'utf8'))
   } catch {
     return {}
   }
 }
 
+function readConfig(dir = dshHome()) {
+  const configuredFile = process.env.QWEN_MM_CONFIG?.trim()
+  const candidates = [
+    configuredFile,
+    visionSettingsPath(dir),
+  ].filter(Boolean)
+  for (const file of candidates) {
+    if (!existsSync(file)) continue
+    const values = readConfigFile(file)
+    if (Object.keys(values).length > 0) return values
+  }
+  return {}
+}
+
+function effectiveConfig(dir = dshHome()) {
+  const file = readConfig(dir)
+  return {
+    ...file,
+    // Keep compatibility with users who configured Qwen before the plugin
+    // settings card existed and exported the credentials in the host env.
+    DASHSCOPE_API_KEY: file.DASHSCOPE_API_KEY || process.env.DASHSCOPE_API_KEY || '',
+    QWEN_MM_API_VL_MODEL: file.QWEN_MM_API_VL_MODEL || process.env.QWEN_MM_API_VL_MODEL || undefined,
+  }
+}
 function validateSecret(value) {
   if (typeof value !== 'string' || value.length < 8 || value.length > 512 || /[\r\n\0]/.test(value)) {
     throw new Error('invalid-dashscope-api-key')
@@ -45,7 +69,7 @@ function validateModel(value) {
 
 /** Browser-safe view. The API key itself is intentionally never returned. */
 export function visionSettingsView(dir = dshHome()) {
-  const config = readConfig(dir)
+  const config = effectiveConfig(dir)
   const key = config.DASHSCOPE_API_KEY
   return {
     configured: typeof key === 'string' && key.length > 0,
