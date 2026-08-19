@@ -291,7 +291,7 @@ window.__ModuleLoader__.load({
 
     function apply(ctx) {
       ctx.slots.inject('settings.plugin.item', () => ctx.slots.register(
-        { name: 'settings.plugin.item', id: 'desktop-pet', order: 100, label: 'DeepSeek 桌宠' },
+        { name: 'settings.plugin.item', key: 'desktop-pet', id: 'desktop-pet', order: 100, label: 'DeepSeek 桌宠' },
         () => React.createElement(PetSettingsCard),
       ))
     }

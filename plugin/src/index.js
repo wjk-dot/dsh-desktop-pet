@@ -6,6 +6,8 @@
  */
 
 import { randomUUID } from 'node:crypto'
+import z from '@deepseek-ai/schemastery'
+import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings'
 import { PetChatService } from './chat.js'
 import { removeBridgeFile, writeBridgeFile } from './bridge.js'
 import { loadEnabled, saveEnabled } from './control.js'
@@ -16,10 +18,27 @@ import { PetEventHub } from './event-hub.js'
 /** 稳定的 cordis 插件名（与 patch 插入行 id 对应）。 */
 export const name = 'desktop-pet'
 
-/** 依赖服务：web 服务器、原生会话 API、工作区注册表和默认模型。 */
-export const inject = ['webServer', 'llm', 'agentDefaultModel', 'workspaceRegistry', 'apiProxy', 'sessions']
+/** 依赖服务：web 服务器、原生会话 API、工作区注册表、默认模型和设置服务。 */
+export const inject = ['webServer', 'llm', 'agentDefaultModel', 'workspaceRegistry', 'apiProxy', 'sessions', 'settings']
 
 export { defaultCompanionApp, launchCompanion }
+
+/** Host 配置页使用的稳定 namespace，必须与客户端卡片的 key 保持一致。 */
+export const DESKTOP_PET_SETTINGS_NAMESPACE = settingsNamespace('desktop-pet')
+
+export const Config = z.object({
+  personaName: z.string().default('小鲸鱼'),
+  systemPrompt: z.string().default(''),
+  maxHistoryTurns: z.number().step(1).min(1).default(12),
+  temperature: z.number().min(0).default(0.7),
+  maxTokens: z.number().step(1).min(1).default(4096),
+  model: z.object({
+    provider: z.string().default(''),
+    model: z.string().default(''),
+    reasoningEffort: z.string().default(''),
+  }).default({}),
+  companionApp: z.string().default(''),
+})
 
 const runtimeKey = Symbol.for('@linxin666/dsh-desktop-pet/runtime')
 
@@ -36,6 +55,11 @@ function setActiveRuntime(runtime) {
  * @param {import('./chat.js').PetChatConfig & {companionApp?: string}} [config]
  */
 export function apply(ctx, config = {}) {
+  installSettingsSection(ctx, DESKTOP_PET_SETTINGS_NAMESPACE, Config, config, {
+    setSource: () => {},
+    onChange: () => {},
+  })
+
   // HMR can briefly overlap Fibers. Dispose the previous module-owned runtime
   // before registering exact routes so an old Fiber cannot poison boot.
   activeRuntime()?.dispose('replaced')

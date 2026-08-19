@@ -12,16 +12,18 @@
       {
         "label": "main",
         "title": "DeepSeek Pet",
-        "width": 380,
-        "height": 560,
+        "width": 168,
+        "height": 168,
         "minWidth": 118,
         "minHeight": 118,
         "decorations": false,
         "transparent": true,
+        "shadow": false,
         "alwaysOnTop": true,
         "skipTaskbar": true,
         "resizable": false,
-        "visible": true
+        "visible": true,
+        "backgroundColor": "#00000000"
       }
     ],
     "security": {

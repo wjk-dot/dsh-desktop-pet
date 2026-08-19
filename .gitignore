@@ -14,3 +14,7 @@ node_modules/
 
 # 本地运行痕迹
 *.tmp
+
+# Tauri Windows generated output
+companions/windows/src-tauri/target/
+companions/windows/src-tauri/gen/

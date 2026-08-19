@@ -79,6 +79,27 @@
     stage.style.width = w + 'px'
     stage.style.height = h + 'px'
     post('layout', { mode: layoutMode, width: w, height: h, size: iconSize })
+    postHitRegions()
+  }
+
+  function postHitRegions() {
+    const regions = [petEl, bubble, inputBar, activityTag, offlineTag]
+      .filter(function (el) { return el && !el.hidden })
+      .map(function (el) {
+        const r = el.getBoundingClientRect()
+        const scale = window.devicePixelRatio || 1
+        // Keep a small grab halo around the whale. It is only used while the
+        // native window is being recovered from an edge, so transparent canvas
+        // areas still pass clicks through during normal use.
+        const halo = el === petEl ? 16 : 0
+        return {
+          x: (r.left - halo) * scale,
+          y: (r.top - halo) * scale,
+          width: (r.width + halo * 2) * scale,
+          height: (r.height + halo * 2) * scale,
+        }
+      })
+    post('hitRegions', { regions: regions })
   }
 
   /* ---------- 状态 ---------- */
@@ -298,8 +319,9 @@
     if (!richEl) return
     const last = conversation[lastEntryIndex]
     if (!last) return
+    const shouldStickToBottom = transcriptIsNearBottom()
     richEl.innerHTML = renderRich(last.raw) + caretHtml
-    scrollTranscriptBottom()
+    if (shouldStickToBottom) scrollTranscriptBottom()
     fitBubbleWidthSoon()
   }
 
@@ -314,9 +336,20 @@
     })
   }
 
+  let transcriptFollowTail = true
+
   function scrollTranscriptBottom() {
+    transcriptFollowTail = true
     transcript.scrollTop = transcript.scrollHeight
   }
+
+  function transcriptIsNearBottom() {
+    return transcript.scrollHeight - transcript.scrollTop - transcript.clientHeight < 24
+  }
+
+  transcript.addEventListener('scroll', function () {
+    transcriptFollowTail = transcriptIsNearBottom()
+  })
 
   /** 显示会话面板（气泡）。 */
   function showTranscript() {
@@ -549,6 +582,7 @@
           return { role: t.role, raw: t.content }
         })
       const wasHidden = bubble.hidden
+      const shouldStickToBottom = transcriptFollowTail && transcriptIsNearBottom()
       conversation = next
       lastEntryIndex = -1
       // 只刷新数据，不强制弹出气泡——可见性由用户控制。
@@ -556,7 +590,7 @@
       if (!wasHidden && conversation.length > 0) {
         renderAll()
         fitBubbleWidth()
-        scrollTranscriptBottom()
+        if (shouldStickToBottom) scrollTranscriptBottom()
       }
     },
 
