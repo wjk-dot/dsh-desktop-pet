@@ -45,15 +45,23 @@ function commandAvailable(command) {
     '/opt/homebrew/bin',
     '/usr/local/bin',
   ].filter(Boolean)
-  if (process.platform === 'win32' && appData) {
-    try {
-      for (const entry of readdirSync(join(appData, 'Python'), { withFileTypes: true })) {
-        if (entry.isDirectory() && /^Python\d+$/i.test(entry.name)) {
-          directories.push(join(appData, 'Python', entry.name, 'Scripts'))
+  if (process.platform === 'win32') {
+    const pythonRoots = [
+      appData && join(appData, 'Python'),
+      join(home, 'AppData', 'Roaming', 'Python'),
+      join(home, 'AppData', 'Local', 'Programs', 'Python'),
+      localAppData && join(localAppData, 'Programs', 'Python'),
+    ].filter(Boolean)
+    for (const root of pythonRoots) {
+      try {
+        for (const entry of readdirSync(root, { withFileTypes: true })) {
+          if (entry.isDirectory() && /^Python\d+$/i.test(entry.name)) {
+            directories.push(join(root, entry.name, 'Scripts'))
+          }
         }
+      } catch {
+        // A user-local Python root is optional; PATH remains authoritative.
       }
-    } catch {
-      // The user-local Python directory is optional; PATH remains authoritative.
     }
   }
   const names = process.platform === 'win32'
