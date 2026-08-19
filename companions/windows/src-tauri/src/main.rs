@@ -141,6 +141,16 @@ fn emit(app: &AppHandle, method: &'static str, args: Vec<Value>) {
     let _ = app.emit("pet:bridge", BridgeEvent { method, args });
 }
 
+fn set_window_visibility(app: &AppHandle, visible: bool) {
+    if let Some(window) = app.get_webview_window("main") {
+        if visible {
+            let _ = window.show();
+        } else {
+            let _ = window.hide();
+        }
+    }
+}
+
 async fn get_json(state: &AppState, host: &ConnectedHost, path: &str) -> Option<Value> {
     let response = request(state, host, path).send().await.ok()?;
     response.status().is_success().then_some(())?;
@@ -167,9 +177,13 @@ async fn refresh_projection(app: &AppHandle, state: &AppState, host: &ConnectedH
 
 async fn bridge_monitor(app: AppHandle, state: Arc<AppState>) {
     let mut last_key = String::new();
+    let mut missing_bridge_count = 0u8;
+    let mut observed_bridge = false;
     loop {
         match read_bridge() {
             Some(bridge) => {
+                observed_bridge = true;
+                missing_bridge_count = 0;
                 let key = format!("{}:{}", bridge.port, bridge.instance_id);
                 let host = ConnectedHost {
                     base_url: format!("http://127.0.0.1:{}", bridge.port),
@@ -187,19 +201,24 @@ async fn bridge_monitor(app: AppHandle, state: Arc<AppState>) {
                 } else {
                     refresh_projection(&app, &state, &host).await;
                 }
-                if let Some(window) = app.get_webview_window("main") {
-                    if bridge.enabled {
-                        let _ = window.show();
-                    } else {
-                        let _ = window.hide();
-                    }
-                }
+                set_window_visibility(&app, bridge.enabled);
             }
             None => {
+                missing_bridge_count = missing_bridge_count.saturating_add(1);
+                // Harness 卸载插件或退出时会删除/等待 bridge 过期。窗口必须立即隐藏，
+                // 否则旧的伴生进程会继续显示，并在 Harness 下次启动前脱离生命周期。
+                set_window_visibility(&app, false);
                 *state.host.lock().await = None;
-                if !last_key.is_empty() {
+                let had_host = !last_key.is_empty();
+                if had_host {
                     last_key.clear();
                     emit(&app, "renderOffline", vec![]);
+                }
+                // bridge 消失代表当前 Harness 生命周期结束。退出伴生进程，避免下一次
+                // Harness 启动时重复拉起多个桌宠实例；新的 bridge 出现后由插件重新拉起。
+                if observed_bridge && missing_bridge_count >= 3 {
+                    app.exit(0);
+                    break;
                 }
             }
         }
@@ -772,6 +791,9 @@ fn main() {
         .setup(move |app| {
             #[cfg(target_os = "windows")]
             if let Some(window) = app.get_webview_window("main") {
+                // 伴生进程可在 Harness 之前启动；只有读到有效 bridge 且 enabled=true
+                // 时才由 bridge_monitor 显示窗口。
+                let _ = window.hide();
                 let _ = window.set_shadow(false);
                 if let Ok(raw) = window.hwnd() {
                     let shared = HIT_REGIONS.get_or_init(|| std::sync::Mutex::new(Vec::new()));

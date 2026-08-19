@@ -132,6 +132,11 @@ final class HostClient: NSObject, URLSessionDataDelegate {
               let expiresAt = obj["expiresAt"] as? Double,
               expiresAt > Date().timeIntervalSince1970 * 1000 else {
             baseURL = nil
+            isEnabled = false
+            if lastEnabled != false {
+                lastEnabled = false
+                DispatchQueue.main.async { self.onEnabledChange?(false) }
+            }
             return
         }
         let newBase = URL(string: "http://127.0.0.1:\(port)")
