@@ -53,7 +53,24 @@ export function writeBridgeFile(port, { dir = dshHome(), instanceId, leaseMs = 1
   const file = bridgeFilePath(dir)
   const tmp = `${file}.tmp`
   writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf8')
-  renameSync(tmp, file)
+  try {
+    renameSync(tmp, file)
+  } catch (error) {
+    // Windows rename does not replace an existing destination. Remove the
+    // old bridge and retry so a stale bridge can never block the heartbeat.
+    if (process.platform !== 'win32') throw error
+    try {
+      unlinkSync(file)
+      renameSync(tmp, file)
+    } catch (retryError) {
+      try {
+        unlinkSync(tmp)
+      } catch {
+        // Keep the original failure as the useful diagnostic.
+      }
+      throw retryError
+    }
+  }
   return file
 }
 

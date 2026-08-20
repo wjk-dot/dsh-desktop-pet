@@ -70,7 +70,9 @@ export function apply(ctx, config = {}) {
     ctx.logger.warn(`desktop-pet: unable to initialize native session: ${error instanceof Error ? error.message : String(error)}`)
   })
 
-  const companionApp = config.companionApp ?? defaultCompanionApp()
+  // Schemastery applies the empty-string default before this function runs;
+  // treat it as "auto-detect" so it cannot mask the platform default.
+  const companionApp = config.companionApp?.trim() || defaultCompanionApp()
   ctx.logger.info(`desktop-pet: companionApp 解析结果 = ${companionApp ? companionApp : '(空)'}`)
 
   // 刷新端口桥：插件挂载时写一次（桥文件携带桌宠开关状态）。

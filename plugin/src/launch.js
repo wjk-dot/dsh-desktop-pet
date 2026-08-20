@@ -39,6 +39,15 @@ export function defaultCompanionApp() {
         join(programW6432, 'DeepSeekPet', 'DeepSeekPet.exe'),
         join(programW6432, 'DeepSeek Pet', 'DeepSeekPet.exe'),
       ]
+
+      // Keep a checkout usable before an installer has been produced. The
+      // release artifact is ignored by git, so this only activates when a
+      // local developer build is actually present.
+      const checkoutRelease = fileURLToPath(new URL(
+        '../../companions/windows/src-tauri/target/release/deepseek-pet-windows.exe',
+        import.meta.url,
+      ))
+      candidates.push(checkoutRelease)
       return candidates.find((candidate) => existsSync(candidate)) || ''
     }
 
