@@ -559,25 +559,6 @@ fn capture_screen_region(x: i32, y: i32, width: u32, height: u32) -> Result<Vec<
 }
 
 #[cfg(target_os = "windows")]
-fn set_native_window_position(window: &WebviewWindow, x: i32, y: i32) -> bool {
-    let Ok(raw) = window.hwnd() else {
-        return false;
-    };
-    let hwnd: HWND = raw.0 as _;
-    unsafe {
-        SetWindowPos(
-            hwnd,
-            std::ptr::null_mut(),
-            x,
-            y,
-            0,
-            0,
-            SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE,
-        ) != 0
-    }
-}
-
-#[cfg(target_os = "windows")]
 unsafe extern "system" fn pet_wnd_proc(
     hwnd: HWND,
     message: u32,
