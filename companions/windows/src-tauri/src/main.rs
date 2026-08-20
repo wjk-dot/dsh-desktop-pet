@@ -25,7 +25,7 @@ use windows_sys::Win32::{
     UI::Input::KeyboardAndMouse::GetAsyncKeyState,
     UI::WindowsAndMessaging::{
         CallWindowProcW, DefWindowProcW, GetCursorPos, GetSystemMetrics, GetWindowLongPtrW,
-        GetWindowRect, SetWindowLongPtrW, SetWindowPos, GWLP_WNDPROC, HTTRANSPARENT,
+        GetWindowRect, SetWindowLongPtrW, SetWindowPos, GWLP_WNDPROC, HTCLIENT, HTTRANSPARENT,
         SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN,
         SWP_NOACTIVATE, SWP_NOSIZE, SWP_NOZORDER, WM_MOVING, WM_NCHITTEST,
     },
@@ -227,10 +227,50 @@ async fn bridge_monitor(app: AppHandle, state: Arc<AppState>) {
 }
 
 #[cfg(target_os = "windows")]
+fn dock_debug(message: &str) {
+    use std::io::Write;
+    if let Ok(mut file) = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(env::temp_dir().join("deepseek-pet-dock.log"))
+    {
+        let _ = writeln!(
+            file,
+            "{} {}",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|d| d.as_millis())
+                .unwrap_or(0),
+            message
+        );
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn set_native_window_position(window: &WebviewWindow, x: i32, y: i32) -> bool {
+    window
+        .hwnd()
+        .ok()
+        .map(|raw| unsafe {
+            SetWindowPos(
+                raw.0 as HWND,
+                std::ptr::null_mut(),
+                x,
+                y,
+                0,
+                0,
+                SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE,
+            ) != 0
+        })
+        .unwrap_or(false)
+}
+
 async fn auto_dock_monitor(app: AppHandle, state: Arc<AppState>) {
     const EDGE_THRESHOLD: i32 = 32;
     const RECOVERY_STRIP: i32 = 24;
     const RECOVERY_HOLD: Duration = Duration::from_millis(900);
+    const DOCK_DELAY: Duration = Duration::from_millis(450);
+    let mut outside_since: Option<Instant> = None;
 
     loop {
         if let Some(window) = app.get_webview_window("main") {
@@ -243,83 +283,153 @@ async fn auto_dock_monitor(app: AppHandle, state: Arc<AppState>) {
                 .await
                 .map(|until| until > Instant::now())
                 .unwrap_or(false);
+            let mut rect = RECT {
+                left: 0,
+                top: 0,
+                right: 0,
+                bottom: 0,
+            };
+            let rect_ok = window
+                .hwnd()
+                .ok()
+                .map(|raw| unsafe { GetWindowRect(raw.0 as HWND, &mut rect) != 0 })
+                .unwrap_or(false);
+            let compact_window =
+                rect_ok && rect.right - rect.left <= 220 && rect.bottom - rect.top <= 220;
+            dock_debug(&format!(
+                "tick auto={} docked={} hold={} rect_ok={} compact={} rect=({},{} {}x{})",
+                auto_dock,
+                is_docked,
+                recovery_hold,
+                rect_ok,
+                compact_window,
+                rect.left,
+                rect.top,
+                rect.right - rect.left,
+                rect.bottom - rect.top
+            ));
 
-            if (!auto_dock || chat_open) && is_docked {
+            // 以原生窗口实际尺寸为准，避免前端布局消息短暂丢失或延迟时，
+            // chat_open 与画面已经收缩的紧凑态不一致。
+            if (!auto_dock || chat_open || !compact_window) && is_docked {
                 if let Some((x, y)) = state.restore_position.lock().await.take() {
-                    set_native_window_position(&window, x, y);
+                    let _ = set_native_window_position(&window, x, y);
                 }
                 *state.docked.lock().await = false;
-            } else if auto_dock && !chat_open {
+            } else if auto_dock && !chat_open && compact_window {
                 let mut cursor = POINT { x: 0, y: 0 };
                 let cursor_ok = unsafe { GetCursorPos(&mut cursor) != 0 };
                 let mouse_down = unsafe { GetAsyncKeyState(0x01) < 0 };
-                let position = window.outer_position().ok();
-                let window_size = window.outer_size().ok();
-                let monitor = if cursor_ok {
-                    window.current_monitor().ok().flatten().or_else(|| {
-                        window
-                            .available_monitors()
-                            .ok()?
+                let x = rect.left;
+                let y = rect.top;
+                let width = rect.right - rect.left;
+                let height = rect.bottom - rect.top;
+                let virtual_left = unsafe { GetSystemMetrics(SM_XVIRTUALSCREEN) };
+                let virtual_top = unsafe { GetSystemMetrics(SM_YVIRTUALSCREEN) };
+                let virtual_right = virtual_left + unsafe { GetSystemMetrics(SM_CXVIRTUALSCREEN) };
+                let virtual_bottom = virtual_top + unsafe { GetSystemMetrics(SM_CYVIRTUALSCREEN) };
+                let monitor_bounds = window
+                    .available_monitors()
+                    .ok()
+                    .and_then(|monitors| {
+                        monitors
                             .into_iter()
-                            .find(|monitor| {
+                            .max_by_key(|monitor| {
                                 let monitor_position = monitor.position();
                                 let monitor_size = monitor.size();
-                                cursor.x >= monitor_position.x
-                                    && cursor.x < monitor_position.x + monitor_size.width as i32
-                                    && cursor.y >= monitor_position.y
-                                    && cursor.y < monitor_position.y + monitor_size.height as i32
+                                let overlap_width = (rect
+                                    .right
+                                    .min(monitor_position.x + monitor_size.width as i32)
+                                    - rect.left.max(monitor_position.x))
+                                .max(0);
+                                let overlap_height = (rect
+                                    .bottom
+                                    .min(monitor_position.y + monitor_size.height as i32)
+                                    - rect.top.max(monitor_position.y))
+                                .max(0);
+                                overlap_width * overlap_height
+                            })
+                            .map(|monitor| {
+                                let position = monitor.position();
+                                let size = monitor.size();
+                                (
+                                    position.x,
+                                    position.y,
+                                    position.x + size.width as i32,
+                                    position.y + size.height as i32,
+                                )
                             })
                     })
-                } else {
-                    None
-                };
+                    .unwrap_or((virtual_left, virtual_top, virtual_right, virtual_bottom));
 
-                if cursor_ok && !mouse_down && position.is_some() && window_size.is_some() {
-                    if let (Some(position), Some(window_size), Some(monitor)) =
-                        (position, window_size, monitor)
-                    {
-                        let monitor_position = monitor.position();
-                        let monitor_size = monitor.size();
-                        let left = monitor_position.x;
-                        let top = monitor_position.y;
-                        let right = left + monitor_size.width as i32;
-                        let bottom = top + monitor_size.height as i32;
-                        let x = position.x;
-                        let y = position.y;
-                        let width = window_size.width as i32;
-                        let height = window_size.height as i32;
-                        let in_window = cursor.x >= x
-                            && cursor.x < x + width
-                            && cursor.y >= y
-                            && cursor.y < y + height;
-                        if is_docked {
-                            if in_window {
-                                if let Some((restore_x, restore_y)) =
-                                    state.restore_position.lock().await.take()
-                                {
-                                    set_native_window_position(&window, restore_x, restore_y);
-                                }
-                                *state.docked.lock().await = false;
-                                *state.recovery_hold_until.lock().await =
-                                    Some(Instant::now() + RECOVERY_HOLD);
+                if cursor_ok && rect_ok {
+                    let (left, top, right, bottom) = monitor_bounds;
+                    let in_window = cursor.x >= x
+                        && cursor.x < x + width
+                        && cursor.y >= y
+                        && cursor.y < y + height;
+                    // Match the macOS shell's 40px interaction halo. A
+                    // transparent WebView area can otherwise make a
+                    // cursor merely brushing the pet look "outside" and
+                    // trigger docking while the user is trying to click.
+                    let near_window = cursor.x >= x - 40
+                        && cursor.x < x + width + 40
+                        && cursor.y >= y - 40
+                        && cursor.y < y + height + 40;
+
+                    if mouse_down || near_window {
+                        outside_since = None;
+                    } else if outside_since.is_none() {
+                        dock_debug(&format!(
+                            "outside start cursor=({}, {}) pos=({}, {}) edge=({},{} {}x{})",
+                            cursor.x,
+                            cursor.y,
+                            x,
+                            y,
+                            left,
+                            top,
+                            right - left,
+                            bottom - top
+                        ));
+                        outside_since = Some(Instant::now());
+                    }
+
+                    if is_docked {
+                        if in_window {
+                            if let Some((restore_x, restore_y)) =
+                                state.restore_position.lock().await.take()
+                            {
+                                let _ = set_native_window_position(&window, restore_x, restore_y);
                             }
-                        } else if !in_window && !recovery_hold {
-                            let edge = if x <= left + EDGE_THRESHOLD {
-                                Some((left - width + RECOVERY_STRIP, y))
-                            } else if x + width >= right - EDGE_THRESHOLD {
-                                Some((right - RECOVERY_STRIP, y))
-                            } else if y <= top + EDGE_THRESHOLD {
-                                Some((x, top - height + RECOVERY_STRIP))
-                            } else if y + height >= bottom - EDGE_THRESHOLD {
-                                Some((x, bottom - RECOVERY_STRIP))
-                            } else {
-                                None
-                            };
-                            if let Some(target) = edge {
+                            *state.docked.lock().await = false;
+                            *state.recovery_hold_until.lock().await =
+                                Some(Instant::now() + RECOVERY_HOLD);
+                        }
+                    } else if !near_window
+                        && !mouse_down
+                        && !recovery_hold
+                        && outside_since
+                            .map(|started| started.elapsed() >= DOCK_DELAY)
+                            .unwrap_or(false)
+                    {
+                        let edge = if x <= left + EDGE_THRESHOLD {
+                            Some((left - width + RECOVERY_STRIP, y))
+                        } else if x + width >= right - EDGE_THRESHOLD {
+                            Some((right - RECOVERY_STRIP, y))
+                        } else if y <= top + EDGE_THRESHOLD {
+                            Some((x, top - height + RECOVERY_STRIP))
+                        } else if y + height >= bottom - EDGE_THRESHOLD {
+                            Some((x, bottom - RECOVERY_STRIP))
+                        } else {
+                            None
+                        };
+                        if let Some(target) = edge {
+                            dock_debug(&format!("DOCK target=({}, {})", target.0, target.1));
+                            if set_native_window_position(&window, target.0, target.1) {
                                 *state.restore_position.lock().await = Some((x, y));
-                                set_native_window_position(&window, target.0, target.1);
                                 *state.docked.lock().await = true;
                             }
+                            outside_since = None;
                         }
                     }
                 }
@@ -527,6 +637,13 @@ unsafe extern "system" fn pet_wnd_proc(
             || (at_bottom_edge
                 && screen_y >= virtual_bottom - recovery_strip
                 && screen_y < virtual_bottom);
+        // 紧凑态窗口只包住桌宠和少量留白。前端首帧发送命中区域前，
+        // 也必须保证桌宠可点击，否则 WM_NCHITTEST 会把整次点击穿透给宿主。
+        // 展开聊天态仍使用下面的精确区域，避免透明画布遮挡侧栏。
+        let compact_window = rect.right - rect.left <= 220 && rect.bottom - rect.top <= 220;
+        if compact_window {
+            return HTCLIENT as LRESULT;
+        }
         let regions = HIT_REGIONS
             .get()
             .map(|r| r.lock().unwrap().clone())
@@ -537,7 +654,7 @@ unsafe extern "system" fn pet_wnd_proc(
                 && y >= region.y as i32
                 && y <= (region.y + region.height) as i32
             {
-                return DefWindowProcW(hwnd, message, wparam, lparam);
+                return HTCLIENT as LRESULT;
             }
         }
         // Keep the whole visible recovery strip client-hit-tested. Returning
@@ -546,7 +663,7 @@ unsafe extern "system" fn pet_wnd_proc(
         // pet.js already distinguishes click from drag and calls
         // start_dragging after the pointer has moved far enough.
         if in_visible_edge {
-            return DefWindowProcW(hwnd, message, wparam, lparam);
+            return HTCLIENT as LRESULT;
         }
         return HTTRANSPARENT as LRESULT;
     }
