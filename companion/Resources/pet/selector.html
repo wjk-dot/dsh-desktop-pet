@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>选择屏幕区域</title>
+<style>
+  html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: rgba(20, 35, 70, .18); cursor: crosshair; }
+  #selection { position: fixed; display: none; border: 2px solid #4d6bfe; background: rgba(77, 107, 254, .12); box-shadow: 0 0 0 99999px rgba(20, 35, 70, .22); }
+</style>
+</head>
+<body>
+<div id="selection"></div>
+<script>
+(function () {
+  const box = document.getElementById('selection')
+  let start = null
+  function invoke(name, args) {
+    if (window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke) return window.__TAURI__.core.invoke(name, args)
+    return Promise.resolve()
+  }
+  function finish(x, y, w, h) {
+    if (w < 2 || h < 2) return invoke('cancel_capture')
+    const dpr = window.devicePixelRatio || 1
+    return invoke('capture_selection', { selection: {
+      x: Math.round((window.screenX + x) * dpr), y: Math.round((window.screenY + y) * dpr),
+      width: Math.round(w * dpr), height: Math.round(h * dpr)
+    } })
+  }
+  window.addEventListener('mousedown', function (e) { if (e.button === 0) { start = { x: e.clientX, y: e.clientY }; box.style.cssText = 'display:block;left:' + e.clientX + 'px;top:' + e.clientY + 'px;width:0;height:0' } })
+  window.addEventListener('mousemove', function (e) {
+    if (!start) return
+    const x = Math.min(start.x, e.clientX), y = Math.min(start.y, e.clientY)
+    box.style.left = x + 'px'; box.style.top = y + 'px'; box.style.width = Math.abs(e.clientX - start.x) + 'px'; box.style.height = Math.abs(e.clientY - start.y) + 'px'
+  })
+  window.addEventListener('mouseup', function (e) { if (!start) return; const s = start; start = null; finish(Math.min(s.x, e.clientX), Math.min(s.y, e.clientY), Math.abs(e.clientX - s.x), Math.abs(e.clientY - s.y)) })
+  window.addEventListener('keydown', function (e) { if (e.key === 'Escape') { start = null; invoke('cancel_capture') } })
+  window.focus()
+})()
+</script>
+</body>
+</html>

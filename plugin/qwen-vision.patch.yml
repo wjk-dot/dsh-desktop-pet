@@ -6,8 +6,14 @@
       config:
         serverName: qwen-mm-plugins-api
         transport: stdio
-        command: sh
+        # Use the same stdio command on macOS and Windows. The host supplies
+        # the platform PATH; env carries the private credential-file location.
+        command: uvx
         args:
-          - '-lc'
-          - 'export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"; export QWEN_MM_CONFIG="${DSH_HOME:-$HOME/.dsh}/pet-qwen-mm.env"; exec "$HOME/.local/bin/uvx" --from "qwen-mm-plugins[api] @ git+https://github.com/QwenLM/Qwen-MM-Plugins.git@qwen-mm-plugins-api-v1.0.3" qwen-mm-plugins-api'
+          - '--from'
+          - 'qwen-mm-plugins[api] @ git+https://github.com/QwenLM/Qwen-MM-Plugins.git@qwen-mm-plugins-api-v1.0.3'
+          - qwen-mm-plugins-api
+        env:
+          QWEN_MM_CONFIG: !!js require('node:path').join(process.env.DSH_HOME || require('node:path').join(require('node:os').homedir(), '.dsh'), 'pet-qwen-mm.env')
+          PATH: !!js [process.env.PATH, require('node:path').join(require('node:os').homedir(), '.local', 'bin'), require('node:path').join(require('node:os').homedir(), 'AppData', 'Roaming', 'Python', 'Python312', 'Scripts')].filter(Boolean).join(require('node:path').delimiter)
         cwd: !!js process.cwd()

@@ -5,8 +5,9 @@
  */
 
 import { mkdir, readdir, rm, writeFile } from 'node:fs/promises'
-import { accessSync, constants } from 'node:fs'
-import { join } from 'node:path'
+import { existsSync, readdirSync } from 'node:fs'
+import { delimiter, join } from 'node:path'
+import { homedir } from 'node:os'
 import { randomUUID } from 'node:crypto'
 import { dshHome } from './dsh-home.js'
 import { visionSettingsView } from './vision-settings.js'
@@ -27,22 +28,46 @@ function qwenConfigPresent() {
 }
 
 function commandAvailable(command) {
-  // Apps launched by macOS Finder often omit user-local bins from PATH even
-  // though the MCP's explicit shell command can resolve them.
-  const path = [
-    process.env.PATH ?? '',
-    join(process.env.HOME ?? '', '.local', 'bin'),
+  // Apps launched by Finder or the Windows shell may omit user-local bins from
+  // PATH even though the MCP's explicit command can resolve them.
+  const home = process.env.HOME || process.env.USERPROFILE || homedir()
+  const localAppData = process.env.LOCALAPPDATA || ''
+  const appData = process.env.APPDATA || ''
+  const directories = [
+    ...(process.env.PATH ?? '').split(delimiter),
+    join(home, '.local', 'bin'),
+    // GUI-launched Windows processes can omit the user PATH entirely. Keep
+    // the standard per-user Python scripts location discoverable from
+    // USERPROFILE as well as from APPDATA.
+    join(home, 'AppData', 'Roaming', 'Python'),
+    join(home, 'AppData', 'Local', 'Programs', 'Python'),
+    join(localAppData, 'Programs', 'Python'),
     '/opt/homebrew/bin',
     '/usr/local/bin',
-  ].filter(Boolean).join(':')
-  return path.split(':').some((dir) => {
-    try {
-      accessSync(join(dir, command), constants.X_OK)
-      return true
-    } catch {
-      return false
+  ].filter(Boolean)
+  if (process.platform === 'win32') {
+    const pythonRoots = [
+      appData && join(appData, 'Python'),
+      join(home, 'AppData', 'Roaming', 'Python'),
+      join(home, 'AppData', 'Local', 'Programs', 'Python'),
+      localAppData && join(localAppData, 'Programs', 'Python'),
+    ].filter(Boolean)
+    for (const root of pythonRoots) {
+      try {
+        for (const entry of readdirSync(root, { withFileTypes: true })) {
+          if (entry.isDirectory() && /^Python\d+$/i.test(entry.name)) {
+            directories.push(join(root, entry.name, 'Scripts'))
+          }
+        }
+      } catch {
+        // A user-local Python root is optional; PATH remains authoritative.
+      }
     }
-  })
+  }
+  const names = process.platform === 'win32'
+    ? [command, `${command}.exe`, `${command}.cmd`, `${command}.bat`]
+    : [command]
+  return directories.some((dir) => names.some((name) => existsSync(join(dir, name))))
 }
 
 export function visionStatus(preferences) {

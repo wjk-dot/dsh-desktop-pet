@@ -30,11 +30,17 @@ Windows shells.
 - DSH bridge discovery, health checks, chat SSE, history/status/preferences
   projection, cancellation, and clipboard support from WebView2;
 - same `桌宠对话` DSH session as the full Harness desktop UI.
+- compact transparent window with native hit testing: empty canvas areas pass
+  mouse input through while visible controls remain interactive;
+- Windows region capture with Escape cancellation, multi-monitor selector
+  bounds, temporary JPEG storage, and deferred `/api/pet/vision` submission.
 
-The explicit user-selected screenshot flow is wired into the shared UI, but the
-Windows Graphics Capture selector, tray menu, position persistence, and
-off-screen recovery are deliberately not claimed complete yet. Screenshot
-requests return a clear in-app error until the native selector module is added.
+The selector uses the Windows desktop capture path exposed by the `screenshots`
+crate. On systems with privacy controls or a policy-blocked desktop capture,
+the native call returns an error and the pet reports it instead of submitting
+an empty image. The first capture can also be delayed by WebView2 focus on
+multi-monitor, mixed-DPI desktops; select using the full-screen overlay and
+press Escape to cancel.
 
 ## Packaging
 
@@ -97,8 +103,8 @@ instanceId、expiresAt、enabled）。桌面上没有 DSH 桌面应用时，二�
    - 检查 `%USERPROFILE%\.dsh\pet-bridge.json` 字段是否与上面对齐
    - WebView2 开发者工具：`tauri.conf.json` 已开 `withGlobalTauri`，
      可在 Rust 侧临时 `window.open_devtools()` 或加日志
-5. 已知未完成项（联调时预期报错/缺失）：截图原生选择器、托盘菜单、
-   位置持久化、屏幕外恢复——这些会按 `Not yet implemented` 处理
+5. Windows 截图选择器支持区域框选和 Escape 取消；托盘菜单、位置持久化、
+   屏幕外恢复仍不属于本任务范围
 
 ### 建议的 CI 冒烟验证（可选增强）
 
