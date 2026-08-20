@@ -14,14 +14,15 @@ use std::{
     env, fs,
     io::Cursor,
     path::PathBuf,
-    sync::Arc,
+    sync::{Arc, OnceLock},
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 use tauri::{AppHandle, Emitter, Manager, State, WebviewWindow};
 use tokio::sync::Mutex;
 #[cfg(target_os = "windows")]
 use windows_sys::Win32::{
-    Foundation::{HWND, LPARAM, LRESULT, POINT, RECT, WPARAM},
+    Foundation::{CloseHandle, GetLastError, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM},
+    System::Threading::CreateMutexW,
     UI::Input::KeyboardAndMouse::GetAsyncKeyState,
     UI::WindowsAndMessaging::{
         CallWindowProcW, DefWindowProcW, GetCursorPos, GetSystemMetrics, GetWindowLongPtrW,
@@ -32,6 +33,36 @@ use windows_sys::Win32::{
 };
 
 const BRIDGE_PROTOCOL_VERSION: u32 = 1;
+#[cfg(target_os = "windows")]
+const SINGLE_INSTANCE_MUTEX_NAME: &str = "Local\\DeepSeekPet.SingleInstance";
+
+#[cfg(target_os = "windows")]
+static SINGLE_INSTANCE_MUTEX: OnceLock<isize> = OnceLock::new();
+
+#[cfg(target_os = "windows")]
+fn ensure_single_instance() -> bool {
+    let name: Vec<u16> = SINGLE_INSTANCE_MUTEX_NAME
+        .encode_utf16()
+        .chain(std::iter::once(0))
+        .collect();
+    let handle = unsafe { CreateMutexW(std::ptr::null(), 0, name.as_ptr()) };
+    if handle.is_null() {
+        eprintln!("[desktop-pet] unable to create single-instance mutex");
+        return false;
+    }
+
+    if unsafe { GetLastError() } == windows_sys::Win32::Foundation::ERROR_ALREADY_EXISTS {
+        unsafe {
+            CloseHandle(handle);
+        }
+        return false;
+    }
+
+    // Keep the mutex handle alive for the entire process lifetime. Windows
+    // releases it automatically when this process exits.
+    let _ = SINGLE_INSTANCE_MUTEX.set(handle as isize);
+    true
+}
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -871,6 +902,11 @@ async fn pet_message(
 }
 
 fn main() {
+    #[cfg(target_os = "windows")]
+    if !ensure_single_instance() {
+        return;
+    }
+
     let state = Arc::new(AppState {
         client: Client::builder()
             .timeout(Duration::from_secs(120))
